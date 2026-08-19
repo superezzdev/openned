@@ -4,6 +4,8 @@ import { adminAuth } from "@/lib/firebase/server"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
+import { OnboardingDialog } from "@/components/onboarding-dialog"
+import { supabaseDb } from "@/lib/supabase/database"
 
 export default async function DashboardLayout({
   children,
@@ -23,6 +25,14 @@ export default async function DashboardLayout({
   } catch (error) {
     redirect("/login")
   }
+
+  const { data: profile } = await supabaseDb
+    .from("profiles")
+    .select("id")
+    .eq("user_id", decodedClaims.uid)
+    .single()
+
+  const needsOnboarding = !profile
 
   return (
     <div className="flex min-h-screen w-full bg-muted/40">
@@ -45,6 +55,7 @@ export default async function DashboardLayout({
           {children}
         </main>
       </div>
+      <OnboardingDialog open={needsOnboarding} />
     </div>
   )
 }

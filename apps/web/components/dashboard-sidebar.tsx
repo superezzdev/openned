@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 
 const navItems = [
   {
@@ -159,9 +159,9 @@ export function DashboardSidebar() {
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-secondary">
             <div className="h-full bg-primary" style={{ width: "30%" }} />
           </div>
-          <Button variant="link" className="mt-2 h-auto p-0 text-xs text-primary" asChild>
-            <Link href="/dashboard/billing">Upgrade plan</Link>
-          </Button>
+          <Link href="/dashboard/billing" className={cn(buttonVariants({ variant: "link" }), "mt-2 h-auto p-0 text-xs text-primary")}>
+            Upgrade plan
+          </Link>
         </div>
       </div>
     </div>
