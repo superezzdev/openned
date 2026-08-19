@@ -3,6 +3,7 @@ import { Hero } from "@/components/hero";
 import { MarqueeSection } from "@/components/marquee-section";
 import { HowItWorks } from "@/components/how-it-works";
 import { BentoGridSection } from "@/components/bento-grid-section";
+import { RankingsSection } from "@/components/rankings-section";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
       <MarqueeSection />
       <HowItWorks />
       <BentoGridSection />
+      <RankingsSection />
     </main>
   );
 }
