@@ -64,3 +64,7 @@ Thumbs.db
 .npm/
 .eslintcache
 .stylelintcache
+
+# Firebase Service Accounts
+*-firebase-adminsdk-*.json
+
