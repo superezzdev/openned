@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { MagneticButton } from "./ui/magnetic-button";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 export function Navbar() {
@@ -38,9 +39,8 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         {/* Left: Logo & Wordmark */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-[18px] h-[18px] bg-[#0a0a0a] border border-white/20 rounded-[4px] flex items-center justify-center relative overflow-hidden group-hover:border-white/40 transition-colors">
-            {/* Orbit / Ring motif */}
-            <div className="w-[8px] h-[8px] rounded-full border border-white/80 absolute" />
+          <div className="relative w-[18px] h-[18px] flex items-center justify-center overflow-hidden transition-opacity group-hover:opacity-80">
+            <Image src="/logo.svg" alt="Openned Logo" fill className="object-contain" />
           </div>
           <span className="font-sans font-medium text-[15px] tracking-tight text-[#f5f5f5]">
             Openned
