@@ -1,9 +1,0 @@
-{
-  "name": "@openned/config",
-  "version": "0.1.0",
-  "private": true,
-  "exports": {
-    "./eslint": "./eslint.json",
-    "./tsconfig": "./tsconfig.json"
-  }
-}
