@@ -39,10 +39,10 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         {/* Left: Logo & Wordmark */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="relative w-[18px] h-[18px] flex items-center justify-center overflow-hidden transition-opacity group-hover:opacity-80">
+          <div className="relative w-[28px] h-[28px] flex items-center justify-center overflow-hidden transition-opacity group-hover:opacity-80">
             <Image src="/logo.svg" alt="Openned Logo" fill className="object-contain" />
           </div>
-          <span className="font-sans font-medium text-[15px] tracking-tight text-[#f5f5f5]">
+          <span className="font-sans font-medium text-[20px] tracking-tight text-[#f5f5f5]">
             Openned
           </span>
         </Link>
