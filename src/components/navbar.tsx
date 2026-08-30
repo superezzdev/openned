@@ -6,16 +6,35 @@ import { motion } from "framer-motion";
 import { MagneticButton } from "./ui/magnetic-button";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { LayoutDashboard } from "lucide-react";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
     };
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    // Check Supabase Auth
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session?.user);
+    });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -76,21 +95,38 @@ export function Navbar() {
         </nav>
 
         {/* Right: Auth Buttons */}
-        <div className="flex items-center gap-4">
-          <Link
-            href="#"
-            className="text-sm font-medium text-white/80 hover:text-[#f5f5f5] transition-colors px-4 py-2"
-          >
-            Log in
-          </Link>
-          <MagneticButton
-            intensity={0.15}
-            className="bg-[#f5f5f5] text-[#0a0a0a] text-sm font-medium px-5 py-2.5 rounded-full hover:bg-white transition-colors"
-          >
-            Get started
-          </MagneticButton>
+        <div className="flex items-center gap-3">
+          {isLoggedIn ? (
+            <Link href="/dashboard">
+              <MagneticButton
+                intensity={0.15}
+                className="bg-[#f5f5f5] text-[#0a0a0a] text-sm font-medium px-5 py-2.5 rounded-full hover:bg-white transition-colors flex items-center gap-2"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span>Dashboard</span>
+              </MagneticButton>
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/signin"
+                className="text-sm font-medium text-white/80 hover:text-[#f5f5f5] transition-colors px-4 py-2"
+              >
+                Log in
+              </Link>
+              <Link href="/signup">
+                <MagneticButton
+                  intensity={0.15}
+                  className="bg-[#f5f5f5] text-[#0a0a0a] text-sm font-medium px-5 py-2.5 rounded-full hover:bg-white transition-colors"
+                >
+                  Get started
+                </MagneticButton>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </motion.header>
   );
 }
+
