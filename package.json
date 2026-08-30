@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@google/genai": "^2.19.0",
     "@hugeicons/core-free-icons": "^4.3.0",
     "@hugeicons/react": "^1.1.10",
     "@shadcn/react": "^0.3.0",
@@ -23,7 +24,9 @@
     "framer-motion": "^13.1.0",
     "input-otp": "^1.5.0",
     "lucide-react": "^1.33.0",
+    "mammoth": "^1.12.2",
     "next": "16.3.1",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.8",
@@ -37,6 +40,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { DashboardProvider } from "@/components/dashboard/dashboard-context";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
+import { OnboardingDialog } from "@/components/dashboard/onboarding-dialog";
 
 export default async function DashboardLayout({
   children,
@@ -25,7 +26,23 @@ export default async function DashboardLayout({
     .from("profiles")
     .select("*")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  // Check if user has uploaded any resume
+  let hasResume = false;
+  if (profile?.id) {
+    const { count } = await supabase
+      .from("resumes")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", profile.id);
+    hasResume = Boolean(count && count > 0);
+  }
+
+  const hasProfileInfo = Boolean(
+    profile?.first_name && (profile?.summary || profile?.phone || profile?.location)
+  );
+
+  const needsOnboarding = !hasResume && !hasProfileInfo;
 
   const displayName =
     profile?.first_name ||
@@ -41,6 +58,14 @@ export default async function DashboardLayout({
   return (
     <DashboardProvider initialCollapsed={initialCollapsed}>
       <div className="min-h-screen bg-[#070707] text-[#f5f5f5] flex">
+        {/* Onboarding Dialog for first time users */}
+        {needsOnboarding && (
+          <OnboardingDialog
+            userEmail={user.email || ""}
+            userName={displayName}
+          />
+        )}
+
         {/* Collapsible Sidebar */}
         <DashboardSidebar
           user={{
@@ -66,3 +91,4 @@ export default async function DashboardLayout({
     </DashboardProvider>
   );
 }
+

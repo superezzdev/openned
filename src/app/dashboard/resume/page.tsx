@@ -1,20 +1,43 @@
-import { PagePlaceholder } from "@/components/dashboard/page-placeholder";
-import { FileText } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { ResumeList } from "@/components/dashboard/resume-list";
 
 export const metadata = {
   title: "Resume | Openned",
-  description: "Manage tailored resume versions and AI-enhanced profiles.",
+  description: "Manage tailored resume versions and uploaded career assets.",
 };
 
-export default function ResumePage() {
+export default async function ResumePage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/signin?redirect=/dashboard/resume");
+  }
+
+  // 1. Fetch Profile
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  let resumes = [];
+
+  if (profile?.id) {
+    const { data } = await supabase
+      .from("resumes")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .order("uploaded_at", { ascending: false });
+
+    resumes = data || [];
+  }
+
   return (
-    <PagePlaceholder
-      title="Resume"
-      badge="AI Parser"
-      description="Upload and customize job-specific resume variants with AI-assisted bullet point optimization."
-      icon={FileText}
-      actionLabel="Create Version"
-      actionHref="#create-resume"
-    />
+    <ResumeList initialResumes={resumes} userEmail={user.email || ""} />
   );
 }
