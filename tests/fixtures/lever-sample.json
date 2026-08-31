@@ -1,0 +1,42 @@
+[
+  {
+    "id": "873b281f-99ab-4172-b7e1-87261a849201",
+    "text": "Senior Full-Stack Engineer, AI Agents",
+    "createdAt": 1755187200000,
+    "hostedUrl": "https://jobs.lever.co/langchain/873b281f-99ab-4172-b7e1-87261a849201",
+    "applyUrl": "https://jobs.lever.co/langchain/873b281f-99ab-4172-b7e1-87261a849201/apply",
+    "descriptionPlain": "LangChain builds frameworks for AI developers. You will develop backend and cloud platforms with TypeScript and Python.",
+    "description": "<div><h3>Role Overview</h3><p>LangChain builds frameworks for AI developers. You will develop backend and cloud platforms with TypeScript and Python.</p></div>",
+    "additionalPlain": "Comprehensive healthcare, 401(k) matching, remote work budget.",
+    "additional": "<p>Comprehensive healthcare, 401(k) matching, remote work budget.</p>",
+    "categories": {
+      "commitment": "Full-time",
+      "department": "Engineering",
+      "location": "San Francisco / Remote",
+      "team": "Core Platform",
+      "workplaceType": "remote",
+      "allLocations": ["San Francisco, CA", "Remote US", "Remote Canada"]
+    },
+    "salaryRange": {
+      "min": 170000,
+      "max": 220000,
+      "currency": "USD",
+      "interval": "per-year"
+    }
+  },
+  {
+    "id": "993c182a-11bc-4921-a1e2-18274a102938",
+    "text": "Product Marketing Manager",
+    "createdAt": 1755273600000,
+    "hostedUrl": "https://jobs.lever.co/langchain/993c182a-11bc-4921-a1e2-18274a102938",
+    "applyUrl": "https://jobs.lever.co/langchain/993c182a-11bc-4921-a1e2-18274a102938/apply",
+    "descriptionPlain": "Drive developer marketing and product launches.",
+    "description": "<p>Drive developer marketing and product launches.</p>",
+    "categories": {
+      "commitment": "Full-time",
+      "department": "Marketing",
+      "location": "New York, NY",
+      "workplaceType": "hybrid"
+    }
+  }
+]

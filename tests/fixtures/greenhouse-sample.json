@@ -1,0 +1,57 @@
+{
+  "jobs": [
+    {
+      "id": 4829102,
+      "title": "Staff Software Engineer, Platform Infrastructure",
+      "updated_at": "2026-08-15T14:30:00.000Z",
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/4829102",
+      "location": {
+        "name": "San Francisco, CA"
+      },
+      "departments": [
+        {
+          "id": 101,
+          "name": "Engineering"
+        }
+      ],
+      "offices": [
+        {
+          "id": 201,
+          "name": "San Francisco HQ",
+          "location": "San Francisco, CA"
+        },
+        {
+          "id": 202,
+          "name": "Seattle Office",
+          "location": "Seattle, WA"
+        }
+      ],
+      "content": "&lt;h2&gt;About Stripe&lt;/h2&gt;&lt;p&gt;Stripe is a financial infrastructure platform for businesses.&lt;/p&gt;&lt;p&gt;We are looking for a Staff Software Engineer to build distributed payment pipelines.&lt;/p&gt;",
+      "metadata": [
+        {
+          "id": 501,
+          "name": "Salary Range",
+          "value": "$210,000 - $260,000"
+        }
+      ]
+    },
+    {
+      "id": 4829103,
+      "title": "Frontend Engineer, Design Systems",
+      "updated_at": "2026-08-20T10:00:00.000Z",
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/4829103",
+      "location": {
+        "name": "Remote, US"
+      },
+      "departments": [
+        {
+          "id": 102,
+          "name": "Product Design"
+        }
+      ],
+      "offices": [],
+      "content": "<p>Design systems team at Stripe builds React UI components.</p>",
+      "metadata": []
+    }
+  ]
+}

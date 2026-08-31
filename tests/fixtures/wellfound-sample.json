@@ -1,0 +1,51 @@
+{
+  "jobs": [
+    {
+      "id": 982145,
+      "slug": "staff-distributed-systems-engineer",
+      "title": "Staff Distributed Systems Engineer",
+      "job_type": "full-time",
+      "department": "Infrastructure",
+      "remote": true,
+      "remote_type": "remote",
+      "location": "San Francisco, CA",
+      "locations": [
+        { "name": "San Francisco, CA" },
+        { "name": "New York, NY" }
+      ],
+      "salary_min": 210000,
+      "salary_max": 280000,
+      "salary_currency": "USD",
+      "salary_interval": "yearly",
+      "compensation_string": "$210k – $280k • 0.1% – 0.5%",
+      "url": "https://wellfound.com/company/modal-labs/jobs/982145-staff-distributed-systems-engineer",
+      "apply_url": "https://wellfound.com/company/modal-labs/jobs/982145-staff-distributed-systems-engineer?action=apply",
+      "posted_at": "2026-08-25T12:00:00.000Z",
+      "description": "<p>Modal is building the serverless cloud platform for AI/ML and data workloads.</p><p>We are looking for a Staff Distributed Systems Engineer to scale our container execution engine.</p>",
+      "skills": ["Rust", "Python", "Distributed Systems", "Linux Kernel"]
+    },
+    {
+      "id": 982146,
+      "slug": "frontend-founding-engineer",
+      "title": "Frontend Founding Engineer",
+      "job_type": "full-time",
+      "department": "Engineering",
+      "remote": false,
+      "remote_type": "onsite",
+      "location": "New York, NY",
+      "locations": ["New York, NY"],
+      "salary_min": 170000,
+      "salary_max": 230000,
+      "salary_currency": "USD",
+      "salary_interval": "yearly",
+      "url": "https://wellfound.com/company/modal-labs/jobs/982146-frontend-founding-engineer",
+      "apply_url": "https://wellfound.com/company/modal-labs/jobs/982146-frontend-founding-engineer#apply",
+      "posted_at": "2026-08-28T09:30:00.000Z",
+      "description": "<p>Build high-performance interactive developer consoles in Next.js and TypeScript.</p>",
+      "skills": ["TypeScript", "Next.js", "React", "Tailwind CSS"]
+    }
+  ],
+  "page": 1,
+  "total_pages": 1,
+  "has_more": false
+}

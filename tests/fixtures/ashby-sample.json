@@ -1,0 +1,46 @@
+{
+  "jobs": [
+    {
+      "id": "e30291ba-4491-4921-b0e2-c48192a01928",
+      "title": "Research Engineer, Post-Training Alignment",
+      "department": "Applied Research",
+      "team": "Frontier Models",
+      "locationId": "loc-sf-01",
+      "locationName": "San Francisco, CA",
+      "secondaryLocations": [
+        {
+          "locationId": "loc-nyc-02",
+          "locationName": "New York, NY"
+        },
+        {
+          "locationId": "loc-london-03",
+          "locationName": "London, UK"
+        }
+      ],
+      "employmentType": "FullTime",
+      "isRemote": false,
+      "isListed": true,
+      "publishedAt": "2026-08-18T12:00:00.000Z",
+      "jobUrl": "https://jobs.ashbyhq.com/openai/e30291ba-4491-4921-b0e2-c48192a01928",
+      "applyUrl": "https://jobs.ashbyhq.com/openai/e30291ba-4491-4921-b0e2-c48192a01928/application",
+      "descriptionPlain": "Develop reinforcement learning algorithms and alignment pipelines for next-generation intelligence.",
+      "descriptionHtml": "<p>Develop reinforcement learning algorithms and alignment pipelines for next-generation intelligence.</p>",
+      "compensation": {
+        "targetSalary": {
+          "min": 245000,
+          "max": 385000,
+          "currency": "USD",
+          "interval": "yearly"
+        },
+        "compensationTierSummary": "$245,000 - $385,000 • Generous Equity Package"
+      }
+    },
+    {
+      "id": "f40192ba-1102-4821-b992-d9281726a112",
+      "title": "Internal Draft Role",
+      "department": "Internal Ops",
+      "isListed": false,
+      "publishedAt": "2026-08-01T00:00:00.000Z"
+    }
+  ]
+}

@@ -62,6 +62,17 @@ export function PlatformSelector({
       logoSrc: "/platforms/Lever.png",
     },
     {
+      id: "ashby",
+      name: "Ashby",
+      domain: "jobs.ashbyhq.com",
+      count: counts.ashby || 0,
+      badgeClass: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+      activeColor: "text-purple-400",
+      activeBorder: "border-purple-500/50 shadow-purple-500/10",
+      activeBg: "bg-purple-950/25",
+      logoSrc: "/platforms/Ashby.png",
+    },
+    {
       id: "workable",
       name: "Workable",
       domain: "apply.workable.com",

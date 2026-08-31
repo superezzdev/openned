@@ -87,6 +87,13 @@ export function DashboardSidebar({
       badge: "3 Active",
       description: "Track submission pipeline",
     },
+    {
+      title: "Job Ingestion",
+      href: "/dashboard/admin/sources",
+      icon: Sparkles,
+      badge: "Admin",
+      description: "ATS sync and crawler observability",
+    },
   ];
 
   const footerNavItems = [

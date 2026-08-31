@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "shortcode": "PRPX9482A",
+      "title": "Staff Backend Engineer, Search & Indexing",
+      "code": "ENG-2026-09",
+      "country": "United States",
+      "city": "San Francisco",
+      "state": "CA",
+      "department": "Core Engine",
+      "employment_type": "Full-time",
+      "telecommuting": true,
+      "url": "https://apply.workable.com/perplexity/j/PRPX9482A/",
+      "application_url": "https://apply.workable.com/perplexity/j/PRPX9482A/apply/",
+      "published_on": "2026-08-19T08:00:00.000Z",
+      "description": "<p>Architect real-time search and retrieval infrastructure for Perplexity AI conversational answer engine.</p>",
+      "salary": {
+        "min": 180000,
+        "max": 240000,
+        "currency": "USD",
+        "interval": "yearly"
+      }
+    }
+  ]
+}
