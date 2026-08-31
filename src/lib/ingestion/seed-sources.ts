@@ -314,4 +314,74 @@ export const INITIAL_JOB_SOURCES: DiscoveredSource[] = [
     company_logo: "/platforms/wellfound.png",
     source_url: "https://wellfound.com/company/resend",
   },
+
+  // --- SmartRecruiters Sources ---
+  {
+    source: "smartrecruiters",
+    source_name: "SmartRecruiters",
+    source_identifier: "SmartRecruiters",
+    company_name: "SmartRecruiters Inc",
+    company_logo: "/platforms/SmartRecruiters.png",
+    source_url: "https://jobs.smartrecruiters.com/SmartRecruiters",
+  },
+  {
+    source: "smartrecruiters",
+    source_name: "Avery Dennison",
+    source_identifier: "AveryDennison",
+    company_name: "Avery Dennison",
+    company_logo: "/platforms/SmartRecruiters.png",
+    source_url: "https://jobs.smartrecruiters.com/AveryDennison",
+  },
+  {
+    source: "smartrecruiters",
+    source_name: "CERN",
+    source_identifier: "CERN",
+    company_name: "CERN",
+    company_logo: "/platforms/SmartRecruiters.png",
+    source_url: "https://jobs.smartrecruiters.com/CERN",
+  },
+  {
+    source: "smartrecruiters",
+    source_name: "Ubisoft",
+    source_identifier: "Ubisoft2",
+    company_name: "Ubisoft",
+    company_logo: "/platforms/SmartRecruiters.png",
+    source_url: "https://jobs.smartrecruiters.com/Ubisoft2",
+  },
+  // --- Y Combinator Sources ---
+  {
+    source: "ycombinator",
+    source_name: "Y Combinator Job Directory",
+    source_identifier: "ycombinator-jobs",
+    company_name: "Y Combinator",
+    company_logo: "/platforms/ycombinator.png",
+    source_url: "https://www.ycombinator.com/jobs",
+  },
+  // --- Adzuna Sources ---
+  {
+    source: "adzuna",
+    source_name: "Adzuna India Tech Jobs",
+    source_identifier: "software engineer",
+    company_name: "Adzuna (India)",
+    company_logo: "/platforms/adzuna.svg",
+    source_url: "https://www.adzuna.in",
+    metadata: {
+      country: "in",
+      location: "India",
+      resultsPerPage: 30,
+    },
+  },
+  {
+    source: "adzuna",
+    source_name: "Adzuna Global Tech Jobs",
+    source_identifier: "developer",
+    company_name: "Adzuna (Global)",
+    company_logo: "/platforms/adzuna.svg",
+    source_url: "https://www.adzuna.com",
+    metadata: {
+      country: "gb",
+      resultsPerPage: 30,
+    },
+  },
 ];
+

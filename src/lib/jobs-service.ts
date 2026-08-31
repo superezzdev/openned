@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 export interface JobRecord {
   id: string;
   user_id: string;
-  platform: "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "custom" | string;
+  platform: "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "smartrecruiters" | "ycombinator" | "adzuna" | "custom" | string;
   title: string;
   company: string;
   company_logo?: string | null;
@@ -43,7 +43,7 @@ export interface UserProfileData {
 }
 
 export interface PlatformConfig {
-  id: "greenhouse" | "lever" | "ashby" | "workable" | "wellfound";
+  id: "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "smartrecruiters" | "ycombinator" | "adzuna";
   name: string;
   siteQuery: string;
   badgeClass: string;
@@ -85,6 +85,27 @@ export const SUPPORTED_PLATFORMS: PlatformConfig[] = [
     siteQuery: "site:wellfound.com/jobs",
     badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/20",
     color: "#F59E0B",
+  },
+  {
+    id: "smartrecruiters",
+    name: "SmartRecruiters",
+    siteQuery: "site:jobs.smartrecruiters.com OR site:careers.smartrecruiters.com",
+    badgeClass: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+    color: "#0EA5E9",
+  },
+  {
+    id: "ycombinator",
+    name: "Y Combinator",
+    siteQuery: "site:ycombinator.com/companies/*/jobs",
+    badgeClass: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    color: "#FF6600",
+  },
+  {
+    id: "adzuna",
+    name: "Adzuna",
+    siteQuery: "site:adzuna.in OR site:adzuna.com",
+    badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    color: "#2563EB",
   },
 ];
 
@@ -303,31 +324,70 @@ export async function fetchCachedOrFreshJobs(
     }
   }
 
-  // 3. Query canonical_jobs table (Active jobs)
-  let canonicalQuery = supabase
-    .from("canonical_jobs")
-    .select("*")
-    .eq("active", true)
-    .order("posted_at", { ascending: false })
-    .limit(100);
+  // 3. Query canonical_jobs table (Active jobs) & Global Platform Counts
+  const platformCounts: Record<string, number> = {
+    all: 0,
+    greenhouse: 0,
+    lever: 0,
+    ashby: 0,
+    workable: 0,
+    wellfound: 0,
+    smartrecruiters: 0,
+    ycombinator: 0,
+    adzuna: 0,
+  };
+
+  // Query accurate active counts across all supported platforms
+  const countPromises = SUPPORTED_PLATFORMS.map(async (pConfig) => {
+    const platform = pConfig.id;
+    const { count } = await supabase
+      .from("canonical_jobs")
+      .select("*", { count: "exact", head: true })
+      .eq("source", platform)
+      .eq("active", true);
+    return { platform, count: count || 0 };
+  });
+
+  const countResults = await Promise.all(countPromises);
+  let totalActiveInDb = 0;
+  for (const { platform, count } of countResults) {
+    platformCounts[platform] = count;
+    totalActiveInDb += count;
+  }
+  platformCounts.all = totalActiveInDb;
+
+  let canonicalJobs: any[] = [];
 
   if (options.platform && options.platform !== "all") {
-    canonicalQuery = canonicalQuery.eq("source", options.platform.toLowerCase());
-  }
+    // Specific platform requested: fetch up to 100 jobs for this platform
+    const { data } = await supabase
+      .from("canonical_jobs")
+      .select("*")
+      .eq("source", options.platform.toLowerCase())
+      .eq("active", true)
+      .order("posted_at", { ascending: false, nullsFirst: false })
+      .limit(100);
+    canonicalJobs = data || [];
+  } else {
+    // "All" platforms requested: fetch balanced sample of up to 35 jobs per platform
+    const platformFetches = SUPPORTED_PLATFORMS.map(async (pConfig) => {
+      const platform = pConfig.id;
+      const { data } = await supabase
+        .from("canonical_jobs")
+        .select("*")
+        .eq("source", platform)
+        .eq("active", true)
+        .order("posted_at", { ascending: false, nullsFirst: false })
+        .limit(35);
+      return data || [];
+    });
 
-  const { data: canonicalJobs } = await canonicalQuery;
+    const results = await Promise.all(platformFetches);
+    canonicalJobs = results.flat();
+  }
 
   // If canonical jobs exist, normalize & score them
   if (canonicalJobs && canonicalJobs.length > 0) {
-    const platformCounts: Record<string, number> = {
-      all: canonicalJobs.length,
-      greenhouse: 0,
-      lever: 0,
-      ashby: 0,
-      workable: 0,
-      wellfound: 0,
-    };
-
     const transformedJobs: JobRecord[] = canonicalJobs.map((cj) => {
       const interaction = interactionMap.get(cj.id);
       const metadata = extractJobMetadata(cj.title, cj.description || "", userProfileData.skills);
@@ -337,11 +397,6 @@ export async function fetchCachedOrFreshJobs(
         tags: metadata.tags,
         location: cj.location,
       });
-
-      const p = (cj.source || "greenhouse").toLowerCase();
-      if (platformCounts[p] !== undefined) {
-        platformCounts[p]++;
-      }
 
       // Format salary if min/max exists
       let salaryDisplay = metadata.salary;
@@ -392,24 +447,27 @@ export async function fetchCachedOrFreshJobs(
     .order("match_score", { ascending: false });
 
   if (legacyJobs && legacyJobs.length > 0) {
-    const platformCounts: Record<string, number> = {
+    const legacyCounts: Record<string, number> = {
       all: legacyJobs.length,
       greenhouse: 0,
       lever: 0,
       ashby: 0,
       workable: 0,
       wellfound: 0,
+      smartrecruiters: 0,
+      ycombinator: 0,
+      adzuna: 0,
     };
     for (const j of legacyJobs) {
       const p = j.platform?.toLowerCase();
-      if (platformCounts[p] !== undefined) platformCounts[p]++;
+      if (legacyCounts[p] !== undefined) legacyCounts[p]++;
     }
 
     return {
       jobs: legacyJobs as JobRecord[],
       cached: true,
       lastFetched: legacyJobs[0]?.fetched_at || null,
-      platformCounts,
+      platformCounts: legacyCounts,
     };
   }
 
@@ -417,6 +475,6 @@ export async function fetchCachedOrFreshJobs(
     jobs: [],
     cached: false,
     lastFetched: null,
-    platformCounts: { all: 0, greenhouse: 0, lever: 0, ashby: 0, workable: 0, wellfound: 0 },
+    platformCounts,
   };
 }

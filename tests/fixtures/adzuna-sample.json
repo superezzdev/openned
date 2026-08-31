@@ -1,0 +1,89 @@
+{
+  "__CLASS__": "Adzuna::API::Response::JobSearchResults",
+  "count": 1450,
+  "mean": 1850000.0,
+  "results": [
+    {
+      "id": "5392817201",
+      "adref": "5392817201",
+      "title": "Senior Software Engineer - Full Stack",
+      "description": "Leading tech company looking for a <strong>Senior Software Engineer</strong> to architect cloud native systems in React and TypeScript. <p>Requires 5+ years experience.</p>",
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Razorpay"
+      },
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "display_name": "Bengaluru, Karnataka, India",
+        "area": ["India", "Karnataka", "Bengaluru"]
+      },
+      "redirect_url": "https://www.adzuna.in/land/ad/5392817201?se=abc123xyz",
+      "created": "2026-08-20T10:15:30Z",
+      "salary_min": 1800000,
+      "salary_max": 2600000,
+      "salary_is_predicted": "0",
+      "contract_type": "permanent",
+      "contract_time": "full_time",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "latitude": 12.9716,
+      "longitude": 77.5946
+    },
+    {
+      "id": "5392817202",
+      "adref": "5392817202",
+      "title": "Remote Backend Python Engineer",
+      "description": "Fast-growing AI startup seeking 100% remote Python backend engineer for LLM infrastructure.<script>alert('xss')</script><img src=x onerror=steal()>",
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Postman"
+      },
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "display_name": "Remote, India",
+        "area": ["India", "Remote"]
+      },
+      "redirect_url": "https://www.adzuna.in/land/ad/5392817202",
+      "created": "2026-08-22T14:30:00Z",
+      "salary_min": 2200000,
+      "salary_max": 3200000,
+      "salary_is_predicted": "1",
+      "contract_type": "contract",
+      "contract_time": "contract",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "Engineering Jobs",
+        "tag": "engineering-jobs"
+      }
+    },
+    {
+      "id": "5392817203",
+      "adref": "5392817203",
+      "title": "Frontend Developer Intern",
+      "description": "Join our product engineering team as an intern working on Next.js, Tailwind, and React.",
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Swiggy"
+      },
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "display_name": "Hyderabad, Telangana, India",
+        "area": ["India", "Telangana", "Hyderabad"]
+      },
+      "redirect_url": "https://www.adzuna.in/land/ad/5392817203",
+      "created": "2026-08-25T08:00:00Z",
+      "salary_min": 300000,
+      "salary_max": 450000,
+      "contract_type": "internship",
+      "contract_time": "part_time",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "Graduate & Intern Jobs",
+        "tag": "graduate-jobs"
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-export type JobSource = "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "custom";
+export type JobSource = "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "smartrecruiters" | "ycombinator" | "adzuna" | "custom";
 
 export type RemoteType = "remote" | "hybrid" | "onsite";
 export type EmploymentType = "full-time" | "part-time" | "contract" | "internship";

@@ -4,6 +4,9 @@ import { LeverAdapter } from "./lever";
 import { AshbyAdapter } from "./ashby";
 import { WorkableAdapter } from "./workable";
 import { WellfoundAdapter } from "./wellfound";
+import { SmartRecruitersAdapter } from "./smartrecruiters";
+import { YCombinatorAdapter } from "../../../scrapers/ycombinator";
+import { AdzunaAdapter } from "./adzuna";
 import { FallbackParser } from "./fallback";
 
 const adapters: Record<JobSource, JobSourceAdapter> = {
@@ -12,6 +15,9 @@ const adapters: Record<JobSource, JobSourceAdapter> = {
   ashby: new AshbyAdapter(),
   workable: new WorkableAdapter(),
   wellfound: new WellfoundAdapter(),
+  smartrecruiters: new SmartRecruitersAdapter(),
+  ycombinator: new YCombinatorAdapter(),
+  adzuna: new AdzunaAdapter(),
   custom: new FallbackParser(),
 };
 
@@ -33,5 +39,9 @@ export {
   AshbyAdapter,
   WorkableAdapter,
   WellfoundAdapter,
+  SmartRecruitersAdapter,
+  YCombinatorAdapter,
+  AdzunaAdapter,
   FallbackParser,
 };
+

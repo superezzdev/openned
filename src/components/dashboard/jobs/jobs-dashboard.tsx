@@ -136,6 +136,30 @@ export function JobsDashboard({
     }
   };
 
+  const handleSelectPlatform = async (platform: string) => {
+    setSelectedPlatform(platform);
+    if (platform !== "all") {
+      try {
+        const res = await fetch(`/api/jobs?platform=${encodeURIComponent(platform)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.jobs && data.jobs.length > 0) {
+            setJobs((prev) => {
+              const newJobIds = new Set(data.jobs.map((j: JobRecord) => j.id));
+              const remaining = prev.filter((j) => !newJobIds.has(j.id));
+              return [...data.jobs, ...remaining];
+            });
+            if (data.platformCounts) {
+              setPlatformCounts(data.platformCounts);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch platform specific jobs:", err);
+      }
+    }
+  };
+
   const handleClearFilters = () => {
     setSelectedPlatform("all");
     setSearchQuery("");
@@ -173,10 +197,10 @@ export function JobsDashboard({
         </div>
       )}
 
-      {/* 2. Platform Selector (Greenhouse, Lever, Workable, Wellfound) */}
+      {/* 2. Platform Selector (Greenhouse, Lever, Workable, Wellfound, etc.) */}
       <PlatformSelector
         selectedPlatform={selectedPlatform}
-        onSelectPlatform={setSelectedPlatform}
+        onSelectPlatform={handleSelectPlatform}
         counts={platformCounts}
       />
 

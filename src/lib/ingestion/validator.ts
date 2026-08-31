@@ -2,7 +2,7 @@ import { z } from "zod";
 import { NormalizedJob } from "./types";
 
 export const NormalizedJobSchema = z.object({
-  source: z.enum(["greenhouse", "lever", "ashby", "workable", "wellfound", "custom"]),
+  source: z.enum(["greenhouse", "lever", "ashby", "workable", "wellfound", "smartrecruiters", "ycombinator", "adzuna", "custom"]),
   source_job_id: z.string().min(1, "source_job_id cannot be empty"),
   company_name: z.string().min(1, "company_name cannot be empty"),
   company_logo: z.string().nullable().optional(),
