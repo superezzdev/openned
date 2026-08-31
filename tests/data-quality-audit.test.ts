@@ -4,6 +4,8 @@ import { LeverAdapter } from "../src/lib/ingestion/adapters/lever";
 import { AshbyAdapter } from "../src/lib/ingestion/adapters/ashby";
 import { WorkableAdapter } from "../src/lib/ingestion/adapters/workable";
 import { WellfoundAdapter } from "../src/lib/ingestion/adapters/wellfound";
+import { SmartRecruitersAdapter } from "../src/lib/ingestion/adapters/smartrecruiters";
+import { AdzunaAdapter } from "../src/lib/ingestion/adapters/adzuna";
 import { FallbackParser } from "../src/lib/ingestion/adapters/fallback";
 import { validateNormalizedJob } from "../src/lib/ingestion/validator";
 import { computeJobContentHash } from "../src/lib/ingestion/hasher";
@@ -221,6 +223,111 @@ describe("Data Quality Audit Across ATS Adapters", () => {
         posted_at: new Date(Date.now() - i * 86400000).toISOString(),
         description: `<p>Build high-performance cloud runtime systems. Engineer #${i}.</p>`,
         skills: ["Rust", "Python", "Kubernetes"],
+      };
+
+      const normalized = adapter.normalize(raw, source);
+      verifyJobDataQuality(normalized, source);
+    }
+  });
+
+  it("inspects 25 SmartRecruiters jobs for data quality and schema conformity", () => {
+    const adapter = new SmartRecruitersAdapter();
+    const source: JobSourceRecord = {
+      id: "sr-smartrecruiters",
+      source: "smartrecruiters",
+      source_name: "SmartRecruiters Inc",
+      source_identifier: "smartrecruiters",
+      company_name: "SmartRecruiters Inc",
+      source_url: "https://jobs.smartrecruiters.com/smartrecruiters",
+      enabled: true,
+      consecutive_failures: 0,
+    };
+
+    // Generate 25 synthetic SmartRecruiters job postings
+    for (let i = 1; i <= 25; i++) {
+      const raw = {
+        id: `7440001431152${i.toString().padStart(2, "0")}`,
+        name: `Security Infrastructure Engineer ${i}`,
+        uuid: `f14d00ce-bfd2-4ebf-8a01-${i.toString().padStart(12, "0")}`,
+        releasedDate: new Date(Date.now() - i * 86400000).toISOString(),
+        location: {
+          city: "San Francisco",
+          region: "CA",
+          country: "us",
+          remote: i % 2 === 0,
+          hybrid: i % 3 === 0,
+          fullLocation: "San Francisco, CA, United States",
+        },
+        department: {
+          label: "Engineering",
+        },
+        function: {
+          label: "Security Engineering",
+        },
+        typeOfEmployment: {
+          label: i % 2 === 0 ? "Full-time" : "Contract",
+        },
+        compensation: {
+          min: 160000 + i * 2000,
+          max: 220000 + i * 2000,
+          currency: "USD",
+          interval: "yearly",
+        },
+        jobAd: {
+          sections: {
+            jobDescription: {
+              title: "Job Description",
+              text: `<p>Design scalable security automation systems. Posting #${i}.</p>`,
+            },
+          },
+        },
+        ref: `https://jobs.smartrecruiters.com/smartrecruiters/7440001431152${i.toString().padStart(2, "0")}`,
+      };
+
+      const normalized = adapter.normalize(raw, source);
+      verifyJobDataQuality(normalized, source);
+    }
+  });
+
+  it("inspects 25 Adzuna jobs for data quality and schema conformity", () => {
+    const adapter = new AdzunaAdapter();
+    const source: JobSourceRecord = {
+      id: "src-adzuna-audit",
+      source: "adzuna",
+      source_name: "Adzuna India Tech Jobs",
+      source_identifier: "software engineer",
+      company_name: "Adzuna (India)",
+      source_url: "https://www.adzuna.in",
+      enabled: true,
+      consecutive_failures: 0,
+      metadata: {
+        country: "in",
+      },
+    };
+
+    // Generate 25 synthetic Adzuna job postings
+    for (let i = 1; i <= 25; i++) {
+      const raw = {
+        id: `53928172${i.toString().padStart(2, "0")}`,
+        title: `Full Stack Engineer ${i}`,
+        description: `<p>Build cloud services with TypeScript, React, and Node.js. Role #${i}.</p>`,
+        redirect_url: `https://www.adzuna.in/land/ad/53928172${i.toString().padStart(2, "0")}`,
+        created: new Date(Date.now() - i * 86400000).toISOString(),
+        company: {
+          display_name: `Tech Innovations ${i}`,
+        },
+        location: {
+          display_name: "Bengaluru, Karnataka, India",
+          area: ["India", "Karnataka", "Bengaluru"],
+        },
+        salary_min: 1500000 + i * 50000,
+        salary_max: 2500000 + i * 50000,
+        contract_type: i % 2 === 0 ? "permanent" : "contract",
+        contract_time: i % 2 === 0 ? "full_time" : "part_time",
+        category: {
+          label: "IT Jobs",
+          tag: "it-jobs",
+        },
       };
 
       const normalized = adapter.normalize(raw, source);

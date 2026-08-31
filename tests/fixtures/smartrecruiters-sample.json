@@ -1,0 +1,140 @@
+{
+  "offset": 0,
+  "limit": 10,
+  "totalFound": 2,
+  "content": [
+    {
+      "id": "744000143115219",
+      "name": "Senior Information Security Engineer",
+      "uuid": "f14d00ce-bfd2-4ebf-8a01-c8e0fa636a49",
+      "jobAdId": "6f7661db-986b-45a9-be40-859cf4f2b78a",
+      "defaultJobAd": true,
+      "refNumber": "REF2010Z",
+      "company": {
+        "identifier": "smartrecruiters",
+        "name": "SmartRecruiters Inc"
+      },
+      "releasedDate": "2026-08-12T14:04:56.128Z",
+      "location": {
+        "city": "San Francisco",
+        "region": "CA",
+        "country": "us",
+        "remote": true,
+        "hybrid": false,
+        "fullLocation": "San Francisco, CA, United States"
+      },
+      "industry": {
+        "id": "computer_software",
+        "label": "Computer Software"
+      },
+      "department": {
+        "id": "5408693",
+        "label": "Engineering"
+      },
+      "function": {
+        "id": "engineering",
+        "label": "Security Engineering"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "mid_senior_level",
+        "label": "Mid-Senior Level"
+      },
+      "compensation": {
+        "min": 175000,
+        "max": 230000,
+        "currency": "USD",
+        "interval": "yearly"
+      },
+      "jobAd": {
+        "sections": {
+          "companyDescription": {
+            "title": "Company Description",
+            "text": "<p>SmartRecruiters delivers an AI-powered enterprise hiring platform.</p>"
+          },
+          "jobDescription": {
+            "title": "Job Description",
+            "text": "<p>We are looking for a <strong>Senior Information Security Engineer</strong> to lead GRC and cloud compliance.</p>"
+          },
+          "qualifications": {
+            "title": "Qualifications",
+            "text": "<ul><li>5+ years in security engineering</li><li>Experience with ISO 27001 and SOC 2</li></ul>"
+          },
+          "additionalInformation": {
+            "title": "Additional Information",
+            "text": "<p>SmartRecruiters is an Equal Opportunity Employer.</p>"
+          }
+        }
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://jobs.smartrecruiters.com/smartrecruiters/744000143115219",
+      "language": {
+        "code": "en",
+        "label": "English"
+      }
+    },
+    {
+      "id": "744000146519330",
+      "name": "Staff Platform Infrastructure Engineer",
+      "uuid": "58aca5df-46ea-4d3c-b156-69febad01d73",
+      "jobAdId": "33a4fad8-6b19-4f6d-a2f2-5c6caa19bf46",
+      "defaultJobAd": true,
+      "refNumber": "REF88677U",
+      "company": {
+        "identifier": "smartrecruiters",
+        "name": "SmartRecruiters Inc"
+      },
+      "releasedDate": "2026-08-30T17:10:17.605Z",
+      "location": {
+        "city": "Austin",
+        "region": "TX",
+        "country": "us",
+        "address": "620 Congress Ave",
+        "postalCode": "78701",
+        "remote": false,
+        "hybrid": true,
+        "fullLocation": "Austin, TX, United States"
+      },
+      "department": {
+        "id": "1382005",
+        "label": "Platform Infrastructure"
+      },
+      "function": {
+        "id": "infrastructure",
+        "label": "Cloud Platform"
+      },
+      "typeOfEmployment": {
+        "id": "contract",
+        "label": "Contract"
+      },
+      "experienceLevel": {
+        "id": "staff",
+        "label": "Staff"
+      },
+      "customField": [
+        {
+          "fieldId": "salary_range",
+          "fieldLabel": "Salary Range",
+          "valueLabel": "$190,000 - $240,000"
+        }
+      ],
+      "jobAd": {
+        "sections": {
+          "jobDescription": {
+            "title": "Job Description",
+            "text": "<p>Design and build distributed Kubernetes orchestration clusters on AWS.</p>"
+          }
+        }
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://jobs.smartrecruiters.com/smartrecruiters/744000146519330",
+      "language": {
+        "code": "en",
+        "label": "English"
+      }
+    }
+  ]
+}

@@ -13,6 +13,7 @@ This document details the provider adapters, API endpoints, discovery heuristics
 | **Ashby** | Public Job Board API | `https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true` | `openai`, `anthropic`, `linear` |
 | **Workable** | Accounts / Widget API | `https://apply.workable.com/api/v3/accounts/{slug}/jobs` | `perplexity`, `supabase`, `typeform` |
 | **Wellfound** | Public Company Jobs API / Feed | `https://wellfound.com/api/v1/companies/{slug}/jobs` | `modal-labs`, `replit`, `cursor` |
+| **SmartRecruiters** | Official Public Posting API | `https://api.smartrecruiters.com/v1/companies/{slug}/postings` | `smartrecruiters`, `SGS`, `visa`, `skechers` |
 | **Custom / Fallback** | JSON-LD & HTML Parser | HTTP GET to Career Page | `https://company.com/careers` |
 
 ---
@@ -91,7 +92,24 @@ This document details the provider adapters, API endpoints, discovery heuristics
   - `salary_min`, `salary_max`, `compensation_string` -> `salary_min`, `salary_max`, `salary_currency`, `salary_interval`
   - `description` / `description_html` -> `description` (plain text) & `description_html` (sanitized)
 
-### 6. Generic JSON-LD Fallback (`custom`)
+### 6. SmartRecruiters (`smartrecruiters`)
+- **Discovery URL Pattern**: `https://careers.smartrecruiters.com/{company_slug}` or `https://jobs.smartrecruiters.com/{company_slug}`
+- **Primary Endpoint**: `GET https://api.smartrecruiters.com/v1/companies/{company_slug}/postings?limit=100&offset={offset}`
+- **Detail Endpoint**: `GET https://api.smartrecruiters.com/v1/companies/{company_slug}/postings/{posting_id}`
+- **Pagination**: Offset-based pagination with batch limit of 100, tracking `totalFound` and page counts.
+- **Fields Extracted**:
+  - `id` / `uuid` -> `source_job_id`
+  - `name` -> `title`
+  - `ref` / `https://jobs.smartrecruiters.com/{slug}/{id}` -> `job_url`
+  - `https://jobs.smartrecruiters.com/{slug}/{id}/apply` -> `apply_url`
+  - `location` (`city`, `region`, `country`, `fullLocation`) -> `location`, `locations_json`
+  - `location.remote` & `location.hybrid` -> `remote_type` (`remote`, `hybrid`, `onsite`)
+  - `typeOfEmployment` (`permanent`, `contract`, etc.) -> `employment_type`
+  - `department` & `function` -> `department`, `team`
+  - `compensation` (`min`, `max`, `currency`) & `customField` -> `salary_*`
+  - `jobAd.sections` (`companyDescription`, `jobDescription`, `qualifications`, `additionalInformation`) -> `description_html` & `description`
+
+### 7. Generic JSON-LD Fallback (`custom`)
 - **Ingestion Flow**: HTTP fetch -> Regex extraction of `<script type="application/ld+json">` -> Search for objects with `@type = "JobPosting"`.
 - **Fallbacks**: If no JSON-LD script exists, falls back to OpenGraph meta tags (`og:title`, `og:description`, `og:url`).
 
@@ -118,6 +136,7 @@ npm run jobs:sync -- --source=lever
 npm run jobs:sync -- --source=ashby
 npm run jobs:sync -- --source=workable
 npm run jobs:sync -- --source=wellfound
+npm run jobs:sync -- --source=smartrecruiters
 ```
 
 ### Sync a Specific Company

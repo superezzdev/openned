@@ -78,6 +78,14 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
     platformLabel = "Ashby";
     platformLogoSrc = "/platforms/Ashby.png";
     platformBadgeStyle = "bg-purple-500/10 text-purple-300 border-purple-500/25";
+  } else if (platform === "smartrecruiters") {
+    platformLabel = "SmartRecruiters";
+    platformLogoSrc = "/platforms/SmartRecruiters.png";
+    platformBadgeStyle = "bg-sky-500/10 text-sky-300 border-sky-500/25";
+  } else if (platform === "ycombinator") {
+    platformLabel = "Y Combinator";
+    platformLogoSrc = "/platforms/ycombinator.svg";
+    platformBadgeStyle = "bg-orange-500/10 text-orange-300 border-orange-500/25";
   }
 
   // Match score color & level
@@ -129,6 +137,7 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
                 alt={job.company}
                 width={48}
                 height={48}
+                unoptimized
                 className="object-cover w-full h-full"
                 onError={() => setImgError(true)}
               />

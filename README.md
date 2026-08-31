@@ -20,17 +20,75 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+## Adzuna Jobs API Integration
 
-To learn more about Next.js, take a look at the following resources:
+This project integrates the official [Adzuna Jobs API](https://developer.adzuna.com/) for searching and ingesting live job postings across India, the UK, the US, and other supported countries.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 1. Configure Environment Variables
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Obtain your Adzuna App ID and API Key from the [Adzuna Developer Portal](https://developer.adzuna.com/). Add them to your `.env.local`:
 
-## Deploy on Vercel
+```env
+ADZUNA_APP_ID=your_adzuna_app_id
+ADZUNA_APP_KEY=your_adzuna_app_key
+ADZUNA_COUNTRY=in
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Run Real Adzuna API Test
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Verify that your Adzuna API credentials are working and returning live normalized jobs:
+
+```bash
+npm run test:adzuna
+```
+
+### 3. Run Database Persistence Demonstration
+
+Verify end-to-end ingestion, change detection, and deduplication into PostgreSQL / Supabase:
+
+```bash
+npx tsx src/scripts/demonstrate-adzuna-sync.ts
+```
+
+### 4. Search Jobs API Endpoint
+
+Query the server-side Adzuna search endpoint:
+
+```bash
+curl "http://localhost:3000/api/jobs/search?source=adzuna&query=software%20engineer&location=India&page=1&results_per_page=20"
+```
+
+Response format:
+```json
+{
+  "source": "adzuna",
+  "jobs": [
+    {
+      "source": "adzuna",
+      "source_job_id": "5392817201",
+      "company_name": "Razorpay",
+      "title": "Senior Software Engineer",
+      "location": "Bengaluru, Karnataka, India",
+      "salary_min": 1800000,
+      "salary_max": 2600000,
+      "salary_currency": "INR",
+      "job_url": "https://www.adzuna.in/land/ad/5392817201",
+      "apply_url": "https://www.adzuna.in/land/ad/5392817201",
+      "posted_at": "2026-08-20T10:15:30.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "resultsPerPage": 20,
+    "total": 1450
+  }
+}
+```
+
+### 5. Running Tests
+
+Run the full Vitest suite (including mocked Adzuna unit tests and data quality audits):
+
+```bash
+npm run test
+```

@@ -30,6 +30,7 @@ async function seedJobSources() {
     company_logo: source.company_logo,
     source_url: source.source_url,
     enabled: true,
+    metadata: source.metadata || {},
     updated_at: new Date().toISOString(),
   }));
 

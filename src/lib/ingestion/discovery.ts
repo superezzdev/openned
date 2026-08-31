@@ -100,7 +100,43 @@ export function discoverSourceFromUrl(url: string, defaultCompanyName?: string):
       };
     }
 
-    // 6. Custom / Generic Career page fallback
+    // 6. SmartRecruiters (e.g. careers.smartrecruiters.com/SmartRecruiters or jobs.smartrecruiters.com/SmartRecruiters)
+    if (host.includes("smartrecruiters.com")) {
+      let slug = "";
+      if (host.includes("api.smartrecruiters.com") && segments[0] === "v1" && segments[1] === "companies") {
+        slug = segments[2] || "";
+      } else if (segments[0] && !["job", "jobs", "apply", "login", "signup", "pricing", "blog", "about"].includes(segments[0])) {
+        slug = segments[0];
+      } else if (segments[0] === "job" || segments[0] === "jobs") {
+        slug = segments[1] || "";
+      }
+      if (!slug) return null;
+      const companyName = defaultCompanyName || formatCompanyName(slug);
+      return {
+        source: "smartrecruiters",
+        source_name: `${companyName} (SmartRecruiters)`,
+        source_identifier: slug.toLowerCase(),
+        company_name: companyName,
+        company_logo: `/platforms/SmartRecruiters.png`,
+        source_url: `https://jobs.smartrecruiters.com/${slug}`,
+      };
+    }
+
+    // 7. Adzuna (e.g. adzuna.com, adzuna.in, adzuna.co.uk)
+    if (host.includes("adzuna.")) {
+      const slug = segments[segments.length - 1] || "adzuna-jobs";
+      const companyName = defaultCompanyName || "Adzuna Jobs";
+      return {
+        source: "adzuna",
+        source_name: `${companyName} (Adzuna)`,
+        source_identifier: slug.toLowerCase(),
+        company_name: companyName,
+        company_logo: `/platforms/adzuna.svg`,
+        source_url: url.trim(),
+      };
+    }
+
+    // 7. Custom / Generic Career page fallback
     const domainPart = host.replace(/^www\./, "").split(".")[0];
     const companyName = defaultCompanyName || formatCompanyName(domainPart);
     return {

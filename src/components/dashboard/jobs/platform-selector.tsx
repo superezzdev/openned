@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Image from "next/image";
 import { Check, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -94,6 +94,39 @@ export function PlatformSelector({
       activeBg: "bg-amber-950/25",
       logoSrc: "/platforms/wellfound.png",
     },
+    {
+      id: "smartrecruiters",
+      name: "SmartRecruiters",
+      domain: "jobs.smartrecruiters.com",
+      count: counts.smartrecruiters || 0,
+      badgeClass: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+      activeColor: "text-sky-400",
+      activeBorder: "border-sky-500/50 shadow-sky-500/10",
+      activeBg: "bg-sky-950/25",
+      logoSrc: "/platforms/SmartRecruiters.png",
+    },
+    {
+      id: "ycombinator",
+      name: "Y Combinator",
+      domain: "ycombinator.com/jobs",
+      count: counts.ycombinator || 0,
+      badgeClass: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+      activeColor: "text-orange-400",
+      activeBorder: "border-orange-500/50 shadow-orange-500/10",
+      activeBg: "bg-orange-950/25",
+      logoSrc: "/platforms/ycombinator.svg",
+    },
+    {
+      id: "adzuna",
+      name: "Adzuna",
+      domain: "adzuna.in / adzuna.com",
+      count: counts.adzuna || 0,
+      badgeClass: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+      activeColor: "text-blue-400",
+      activeBorder: "border-blue-500/50 shadow-blue-500/10",
+      activeBg: "bg-blue-950/25",
+      logoSrc: "/platforms/adzuna.svg",
+    },
   ];
 
   return (
@@ -106,7 +139,7 @@ export function PlatformSelector({
         <span className="text-xs text-white/40">Select platform to filter</span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-3">
         {platforms.map((p) => {
           const isSelected = selectedPlatform === p.id;
 

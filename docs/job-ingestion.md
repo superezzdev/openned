@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-Openned's **Production Job Ingestion System** is an enterprise-grade, modular, and self-healing job discovery and synchronization engine. It collects live career postings directly from major Applicant Tracking Systems (ATS) and public feeds—including **Greenhouse**, **Lever**, **Ashby**, **Workable**, **Wellfound**, and a **JSON-LD/HTML Fallback Parser**—normalizes them into a canonical schema, and stores them idempotently in Supabase PostgreSQL.
+Openned's **Production Job Ingestion System** is an enterprise-grade, modular, and self-healing job discovery and synchronization engine. It collects live career postings directly from major Applicant Tracking Systems (ATS) and public feeds—including **Greenhouse**, **Lever**, **Ashby**, **Workable**, **Wellfound**, **SmartRecruiters**, and a **JSON-LD/HTML Fallback Parser**—normalizes them into a canonical schema, and stores them idempotently in Supabase PostgreSQL.
 
 ---
 
@@ -16,7 +16,8 @@ graph TD
         A3[Ashby Board API]
         A4[Workable Accounts API]
         A5[Wellfound Public API]
-        A6[Custom Career Pages]
+        A6[SmartRecruiters Posting API]
+        A7[Custom Career Pages]
     end
 
     subgraph Adapters Layer
@@ -25,7 +26,8 @@ graph TD
         B3[AshbyAdapter]
         B4[WorkableAdapter]
         B5[WellfoundAdapter]
-        B6[FallbackParser]
+        B6[SmartRecruitersAdapter]
+        B7[FallbackParser]
     end
 
     A1 --> B1
@@ -34,6 +36,7 @@ graph TD
     A4 --> B4
     A5 --> B5
     A6 --> B6
+    A7 --> B7
 
     subgraph Processing Pipeline
         C[Resilient HTTP Client] --> D[HTML Sanitizer & Normalizer]
@@ -42,7 +45,7 @@ graph TD
         F --> G[Reconciliation & Sync Engine]
     end
 
-    B1 & B2 & B3 & B4 & B5 & B6 --> C
+    B1 & B2 & B3 & B4 & B5 & B6 & B7 --> C
 
     subgraph Storage & Observability
         G -->|Upsert On Conflict| H[(canonical_jobs)]

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="adzuna-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <linearGradient id="adzuna-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#EA580C" />
+    </linearGradient>
+  </defs>
+  <!-- Background Container -->
+  <rect width="100" height="100" rx="22" fill="url(#adzuna-grad)" />
+  <!-- Stylized 'a' glyph with job pin -->
+  <path d="M 50 24 C 36 24 26 34 26 48 C 26 62 36 72 50 72 C 57 72 63 69 68 64 L 68 71 L 76 71 L 76 38 C 76 29 67 24 50 24 Z M 50 33 C 59 33 66 39 66 48 C 66 57 59 63 50 63 C 41 63 35 57 35 48 C 35 39 41 33 50 33 Z" fill="#FFFFFF" />
+  <!-- Adzuna Target Beacon Accent Dot -->
+  <circle cx="68" cy="30" r="7" fill="url(#adzuna-accent)" stroke="#FFFFFF" stroke-width="2" />
+</svg>

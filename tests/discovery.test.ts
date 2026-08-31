@@ -51,6 +51,26 @@ describe("Discovery Utility", () => {
     expect(res?.company_name).toBe("Replit");
   });
 
+  it("should auto-detect SmartRecruiters careers and jobs URLs", () => {
+    const res1 = discoverSourceFromUrl("https://jobs.smartrecruiters.com/smartrecruiters");
+    expect(res1).not.toBeNull();
+    expect(res1?.source).toBe("smartrecruiters");
+    expect(res1?.source_identifier).toBe("smartrecruiters");
+    expect(res1?.company_name).toBe("Smartrecruiters");
+    expect(res1?.company_logo).toBe("/platforms/SmartRecruiters.png");
+
+    const res2 = discoverSourceFromUrl("https://careers.smartrecruiters.com/Visa");
+    expect(res2).not.toBeNull();
+    expect(res2?.source).toBe("smartrecruiters");
+    expect(res2?.source_identifier).toBe("visa");
+    expect(res2?.company_name).toBe("Visa");
+
+    const res3 = discoverSourceFromUrl("https://api.smartrecruiters.com/v1/companies/SGS/postings");
+    expect(res3).not.toBeNull();
+    expect(res3?.source).toBe("smartrecruiters");
+    expect(res3?.source_identifier).toBe("sgs");
+  });
+
   it("should format slug names nicely", () => {
     expect(formatCompanyName("scale-ai")).toBe("Scale Ai");
     expect(formatCompanyName("datadog_inc")).toBe("Datadog Inc");
