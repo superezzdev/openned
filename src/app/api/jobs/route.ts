@@ -62,6 +62,9 @@ export async function PATCH(req: NextRequest) {
     }
     if (typeof applied_status === "boolean") {
       updatePayload.applied_status = applied_status;
+      if (applied_status) {
+        updatePayload.applied_at = new Date().toISOString();
+      }
     }
 
     if (Object.keys(updatePayload).length === 0) {
@@ -71,6 +74,38 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    // 1. Try upserting in user_job_interactions (for canonical jobs)
+    const { data: canonicalJob } = await supabase
+      .from("canonical_jobs")
+      .select("id")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (canonicalJob) {
+      const interactionPayload = {
+        user_id: user.id,
+        canonical_job_id: jobId,
+        ...updatePayload,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: interactionData, error: interactionError } = await supabase
+        .from("user_job_interactions")
+        .upsert(interactionPayload, { onConflict: "user_id,canonical_job_id" })
+        .select()
+        .single();
+
+      if (interactionError) {
+        console.error("Error updating user_job_interactions:", interactionError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        interaction: interactionData,
+      });
+    }
+
+    // 2. Legacy fallback: update legacy jobs table
     const { data, error } = await supabase
       .from("jobs")
       .update(updatePayload)
