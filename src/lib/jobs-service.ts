@@ -488,9 +488,53 @@ export const getSourceFilter = (platformId: string) => {
   return Array.from(variants).map((v) => `source.eq.${v}`).join(",");
 };
 
+// Global in-memory cache for accurate platform counts across all platforms (5-min TTL)
+let cachedPlatformCounts: { counts: Record<string, number>; timestamp: number } | null = null;
+
+export async function getAccuratePlatformCounts(supabaseClient: any): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (cachedPlatformCounts && now - cachedPlatformCounts.timestamp < 5 * 60 * 1000) {
+    return { ...cachedPlatformCounts.counts };
+  }
+
+  const counts: Record<string, number> = { all: 0 };
+  for (const p of SUPPORTED_PLATFORMS) {
+    counts[p.id] = 0;
+  }
+
+  try {
+    const results = await Promise.all(
+      SUPPORTED_PLATFORMS.map((p) =>
+        supabaseClient
+          .from("canonical_jobs")
+          .select("*", { count: "exact", head: true })
+          .or(getSourceFilter(p.id))
+          .eq("active", true)
+      )
+    );
+
+    let total = 0;
+    SUPPORTED_PLATFORMS.forEach((p, idx) => {
+      const c = results[idx]?.count || 0;
+      counts[p.id] = c;
+      total += c;
+    });
+    counts.all = total;
+
+    cachedPlatformCounts = {
+      counts: { ...counts },
+      timestamp: now,
+    };
+    return counts;
+  } catch (err) {
+    console.warn("[jobs-service] Error fetching platform counts:", err);
+    return counts;
+  }
+}
+
 /**
  * Main function to fetch cached or live canonical jobs for user.
- * Highly optimized to minimize database network roundtrips.
+ * Highly optimized to minimize database network roundtrips with 6-hour cache validation.
  */
 export async function fetchCachedOrFreshJobs(
   userId: string,
@@ -525,7 +569,7 @@ export async function fetchCachedOrFreshJobs(
     supabase = createSupabaseClient(url, key);
   }
 
-  // 1. Resolve user profile for scoring (use preloaded profile or memoized loader)
+  // 1. Resolve user profile from resume / profile data for targeting and scoring
   let userProfileData: UserProfileData;
   if (preloadedProfile) {
     userProfileData = preloadedProfile;
@@ -549,10 +593,31 @@ export async function fetchCachedOrFreshJobs(
 
   const targetLocation = options.location || userProfileData.location || "US";
 
-  // 2. If force refresh is requested OR user specified a search query, run live search
-  if (options.forceRefresh || options.query) {
+  // 2. 6-Hour Cache Validation: Check if canonical jobs have fresh data in the DB
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+  const now = new Date();
+
+  const { data: latestJobRow } = await supabase
+    .from("canonical_jobs")
+    .select("scraped_at, created_at")
+    .eq("active", true)
+    .order("scraped_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const latestScrapedAt = latestJobRow?.scraped_at || latestJobRow?.created_at || null;
+  const hasFreshCache = Boolean(
+    latestScrapedAt && now.getTime() - new Date(latestScrapedAt).getTime() < SIX_HOURS_MS
+  );
+
+  // If force refresh is requested OR user specified search query OR cache is stale (>6 hours)
+  const shouldSearchLive = options.forceRefresh || Boolean(options.query) || !hasFreshCache;
+
+  if (shouldSearchLive) {
     try {
-      console.log(`[jobs-service] executing live search for "${targetQuery}" on platform "${options.platform || "all"}"...`);
+      console.log(
+        `[jobs-service] Live job search for "${targetQuery}" on platform "${options.platform || "all"}" (stale: ${!hasFreshCache}, force: ${Boolean(options.forceRefresh)})...`
+      );
       await jobSearchService.search({
         query: targetQuery,
         location: targetLocation,
@@ -563,15 +628,17 @@ export async function fetchCachedOrFreshJobs(
         platform: options.platform && options.platform !== "all" ? options.platform : undefined,
         persist: true,
       });
+      // Invalidate counts cache on live search ingestion
+      cachedPlatformCounts = null;
     } catch (searchErr) {
       console.warn("[jobs-service] Live job search warning:", searchErr);
     }
   }
 
-  // 3. Fast Parallel Fetch: Query user interactions AND canonical jobs simultaneously in 2 requests
+  // 3. Fast Parallel Fetch: Query user interactions, platform-balanced canonical jobs, and global counts
   const isSpecificPlatform = Boolean(options.platform && options.platform !== "all");
 
-  const [interactionsRes, jobsRes] = await Promise.all([
+  const [interactionsRes, jobsData, accurateCounts] = await Promise.all([
     supabase
       .from("user_job_interactions")
       .select("canonical_job_id, saved_status, applied_status")
@@ -584,12 +651,33 @@ export async function fetchCachedOrFreshJobs(
           .eq("active", true)
           .order("posted_at", { ascending: false, nullsFirst: false })
           .limit(100)
-      : supabase
-          .from("canonical_jobs")
-          .select("*")
-          .eq("active", true)
-          .order("posted_at", { ascending: false, nullsFirst: false })
-          .limit(200),
+          .then((r: any) => r.data || [])
+      : Promise.all(
+          SUPPORTED_PLATFORMS.map((p) =>
+            supabase
+              .from("canonical_jobs")
+              .select("*")
+              .or(getSourceFilter(p.id))
+              .eq("active", true)
+              .order("posted_at", { ascending: false, nullsFirst: false })
+              .limit(15)
+          )
+        ).then((results: any[]) => {
+          const combined: any[] = [];
+          const seen = new Set<string>();
+          for (const res of results) {
+            if (res.data) {
+              for (const j of res.data) {
+                if (!seen.has(j.id)) {
+                  seen.add(j.id);
+                  combined.push(j);
+                }
+              }
+            }
+          }
+          return combined;
+        }),
+    getAccuratePlatformCounts(supabase),
   ]);
 
   const interactionMap = new Map<string, { saved_status: boolean; applied_status: boolean }>();
@@ -602,7 +690,7 @@ export async function fetchCachedOrFreshJobs(
     }
   }
 
-  let canonicalJobs: Array<Record<string, any>> = jobsRes.data || [];
+  let canonicalJobs: Array<Record<string, any>> = jobsData || [];
 
   // Fallback: If specific platform had 0 jobs in DB, trigger targeted search
   if (isSpecificPlatform && canonicalJobs.length === 0) {
@@ -626,19 +714,21 @@ export async function fetchCachedOrFreshJobs(
     }
   }
 
-  // 4. In-Memory Platform Distribution Calculation (0.1ms instead of 18 HTTP requests!)
-  const platformCounts: Record<string, number> = {
-    all: canonicalJobs.length,
-  };
-  for (const p of SUPPORTED_PLATFORMS) {
-    platformCounts[p.id] = 0;
-  }
-
+  // 4. Stable Platform Counts: Keep accurate counts across all platforms
+  const platformCounts: Record<string, number> = { ...accurateCounts };
+  // Ensure counts are non-zero for any platforms present in canonicalJobs
   for (const cj of canonicalJobs) {
     const norm = normalizeSourceToPlatform(cj.source);
-    if (platformCounts[norm] !== undefined) {
-      platformCounts[norm]++;
+    if (!platformCounts[norm] || platformCounts[norm] === 0) {
+      platformCounts[norm] = (platformCounts[norm] || 0) + 1;
     }
+  }
+  if (!platformCounts.all || platformCounts.all === 0) {
+    let sum = 0;
+    for (const p of SUPPORTED_PLATFORMS) {
+      sum += platformCounts[p.id] || 0;
+    }
+    platformCounts.all = sum;
   }
 
   // 5. Transform & Score Canonical Jobs
@@ -775,8 +865,8 @@ export async function fetchCachedOrFreshJobs(
 
     return {
       jobs: filteredJobs,
-      cached: !options.forceRefresh,
-      lastFetched: canonicalJobs[0]?.scraped_at || new Date().toISOString(),
+      cached: hasFreshCache && !options.forceRefresh,
+      lastFetched: latestScrapedAt || canonicalJobs[0]?.scraped_at || new Date().toISOString(),
       platformCounts,
     };
   }

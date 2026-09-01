@@ -375,12 +375,21 @@ export function JobList({
     return result;
   }, [jobs, selectedPlatform, activeTab, searchQuery, filters, sortBy]);
 
-  const savedCount = jobs.filter((j) => j.saved_status).length;
-  const appliedCount = jobs.filter((j) => j.applied_status).length;
-  const highMatchCount = jobs.filter((j) => (j.match_score || 0) >= 90).length;
+  const platformJobs = useMemo(() => {
+    if (!selectedPlatform || selectedPlatform === "all") return jobs;
+    const p = selectedPlatform.toLowerCase();
+    return jobs.filter((j) => {
+      const jp = (j.platform || "").toLowerCase();
+      return jp === p || jp.includes(p) || p.includes(jp);
+    });
+  }, [jobs, selectedPlatform]);
+
+  const savedCount = useMemo(() => platformJobs.filter((j) => j.saved_status).length, [platformJobs]);
+  const appliedCount = useMemo(() => platformJobs.filter((j) => j.applied_status).length, [platformJobs]);
+  const highMatchCount = useMemo(() => platformJobs.filter((j) => (j.match_score || 0) >= 90).length, [platformJobs]);
 
   const tabs = [
-    { id: "all", label: "All Matches", count: jobs.length, icon: Layers },
+    { id: "all", label: "All Matches", count: platformJobs.length, icon: Layers },
     { id: "high_match", label: "Top Match (>90%)", count: highMatchCount, icon: Sparkles },
     { id: "saved", label: "Saved Roles", count: savedCount, icon: Bookmark },
     { id: "applied", label: "Applied", count: appliedCount, icon: CheckCircle },
