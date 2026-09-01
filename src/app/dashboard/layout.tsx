@@ -5,6 +5,7 @@ import { DashboardProvider } from "@/components/dashboard/dashboard-context";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
 import { OnboardingDialog } from "@/components/dashboard/onboarding-dialog";
+import { getActiveApplicationsCount } from "@/lib/applications/application-status-service";
 
 export default async function DashboardLayout({
   children,
@@ -17,8 +18,12 @@ export default async function DashboardLayout({
     redirect("/signin?redirect=/dashboard");
   }
 
-  // Fetch memoized full profile
-  const { displayName, needsOnboarding } = await getFullProfileData(user.id);
+  // Fetch memoized full profile and active applications count in parallel
+  const [{ displayName, needsOnboarding }, activeApplicationsCount] =
+    await Promise.all([
+      getFullProfileData(user.id),
+      getActiveApplicationsCount(user.id),
+    ]);
 
   const cookieStore = await cookies();
   const initialCollapsed =
@@ -47,6 +52,7 @@ export default async function DashboardLayout({
             total: 500,
             plan: "Pro Tier",
           }}
+          initialActiveApplicationsCount={activeApplicationsCount}
         />
 
         {/* Main Content Area */}

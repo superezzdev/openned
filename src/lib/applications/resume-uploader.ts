@@ -13,17 +13,48 @@ import * as path from "path";
 import { FailureCode } from "./types";
 import { failApplication } from "./application-status-service";
 
+import { BrowserProvider, PageHandle } from "../automation/types";
+
 /**
  * Upload the user's resume to a file input field on the page.
- * Returns true on success, false on failure.
+ * Supports both:
+ * uploadResume(provider, page, applicationId, resumeUrl, resumeFileName, fileInputSelector)
+ * uploadResume(page, applicationId, resumeUrl, resumeFileName, fileInputSelector)
  */
 export async function uploadResume(
-  page: any,            // Playwright Page
-  applicationId: string,
-  resumeUrl: string | null,
-  resumeFileName: string | null,
-  fileInputSelector: string
+  arg1: any,
+  arg2: any,
+  arg3?: any,
+  arg4?: any,
+  arg5?: any,
+  arg6?: any
 ): Promise<boolean> {
+  let provider: BrowserProvider | null = null;
+  let page: any;
+  let applicationId: string;
+  let resumeUrl: string | null;
+  let resumeFileName: string | null;
+  let fileInputSelector: string;
+
+  if (typeof arg2 === "object" && (arg2.rawPage || arg1.uploadFile)) {
+    // (provider, page, applicationId, resumeUrl, resumeFileName, fileInputSelector)
+    provider = arg1;
+    page = arg2;
+    applicationId = arg3;
+    resumeUrl = arg4;
+    resumeFileName = arg5;
+    fileInputSelector = arg6;
+  } else {
+    // (page, applicationId, resumeUrl, resumeFileName, fileInputSelector)
+    page = arg1;
+    applicationId = arg2;
+    resumeUrl = arg3;
+    resumeFileName = arg4;
+    fileInputSelector = arg5;
+  }
+
+  const rawPage = page?.rawPage || page;
+
   if (!resumeUrl) {
     console.warn("[ResumeUploader] No resume URL available for application:", applicationId);
     await failApplication(
@@ -41,16 +72,30 @@ export async function uploadResume(
     // 1. Download resume to temp file
     tempFilePath = await downloadToTemp(resumeUrl, resumeFileName || "resume.pdf");
 
-    // 2. Verify file input exists and is visible
-    const fileInput = page.locator(fileInputSelector).first();
-    const exists = await fileInput.count() > 0;
+    // 2. Verify file input exists
+    let exists = false;
+    let acceptAttr = "";
+
+    if (provider?.findElement) {
+      const el = await provider.findElement(page, fileInputSelector);
+      exists = Boolean(el);
+      if (exists && rawPage?.locator) {
+        acceptAttr = (await rawPage.locator(fileInputSelector).first().getAttribute("accept")) || "";
+      }
+    } else if (rawPage?.locator) {
+      const fileInput = rawPage.locator(fileInputSelector).first();
+      exists = (await fileInput.count()) > 0;
+      if (exists) {
+        acceptAttr = (await fileInput.getAttribute("accept")) || "";
+      }
+    }
+
     if (!exists) {
       console.warn("[ResumeUploader] File input not found:", fileInputSelector);
       return false;
     }
 
     // 3. Check accepted file types
-    const acceptAttr = await fileInput.getAttribute("accept") || "";
     if (acceptAttr && !isFileTypeAccepted(tempFilePath, acceptAttr)) {
       console.warn("[ResumeUploader] File type not accepted:", { acceptAttr, tempFilePath });
       await failApplication(
@@ -62,14 +107,24 @@ export async function uploadResume(
       return false;
     }
 
-    // 4. Upload via Playwright
-    await fileInput.setInputFiles(tempFilePath);
+    // 4. Upload via Provider abstraction or Playwright
+    if (provider?.uploadFile) {
+      await provider.uploadFile(page, fileInputSelector, tempFilePath);
+    } else if (rawPage?.locator) {
+      await rawPage.locator(fileInputSelector).first().setInputFiles(tempFilePath);
+    } else {
+      throw new Error("No available upload implementation");
+    }
 
     // 5. Wait briefly for upload to register
-    await page.waitForTimeout(1500);
+    if (provider?.waitForTimeout) {
+      await provider.waitForTimeout(page, 1500);
+    } else if (rawPage?.waitForTimeout) {
+      await rawPage.waitForTimeout(1500);
+    }
 
     // 6. Verify upload — look for filename or success indicator
-    const uploaded = await verifyUpload(page, resumeFileName || "resume");
+    const uploaded = await verifyUpload(rawPage, resumeFileName || "resume");
     return uploaded;
   } catch (err: any) {
     console.error("[ResumeUploader] Upload error:", err?.message);
@@ -91,6 +146,7 @@ export async function uploadResume(
     }
   }
 }
+
 
 /**
  * Download a remote file to a temporary local path.

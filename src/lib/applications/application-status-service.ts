@@ -6,12 +6,35 @@
  */
 
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
-import { ApplicationStatus, FailureCode } from "./types";
+import { ApplicationStatus, FailureCode, ACTIVE_APPLICATION_STATUSES } from "./types";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createSupabaseAdmin(url, key);
+}
+
+/**
+ * Count active (in-progress) applications for a given user.
+ */
+export async function getActiveApplicationsCount(userId: string): Promise<number> {
+  try {
+    const supabase = getAdminClient();
+    const { count, error } = await supabase
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .in("status", ACTIVE_APPLICATION_STATUSES);
+
+    if (error) {
+      console.error("[ApplicationStatusService] Failed to get active count:", error.message);
+      return 0;
+    }
+    return count ?? 0;
+  } catch (err: any) {
+    console.error("[ApplicationStatusService] Error getting active count:", err);
+    return 0;
+  }
 }
 
 export interface StatusUpdateOptions {

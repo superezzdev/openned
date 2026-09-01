@@ -19,7 +19,7 @@ type ProfileKey = keyof AutomationProfile | string;
 
 /** All valid profile field keys that the mapper may return */
 const VALID_PROFILE_KEYS: Set<string> = new Set([
-  "first_name", "last_name", "email", "phone",
+  "first_name", "last_name", "full_name", "email", "phone",
   "location", "city", "state", "country",
   "summary", "linkedin_url", "github_url",
   "portfolio_url", "website_url", "twitter_url",
@@ -33,7 +33,8 @@ const VALID_PROFILE_KEYS: Set<string> = new Set([
 type MappingEntry = { key: string; keywords: RegExp[] };
 
 const DETERMINISTIC_MAPPINGS: MappingEntry[] = [
-  { key: "first_name", keywords: [/first\s*name/i, /given\s*name/i, /prénom/i, /\bfname\b/i] },
+  { key: "full_name", keywords: [/full\s*name/i, /legal\s*name/i, /candidate\s*name/i, /^name$/i] },
+  { key: "first_name", keywords: [/first\s*name/i, /given\s*name/i, /preferred\s*name/i, /prénom/i, /\bfname\b/i] },
   { key: "last_name", keywords: [/last\s*name/i, /family\s*name/i, /surname/i, /\blname\b/i] },
   { key: "email", keywords: [/e.?mail/i, /email\s*address/i] },
   { key: "phone", keywords: [/phone/i, /mobile/i, /telephone/i, /contact\s*number/i, /\btel\b/i] },

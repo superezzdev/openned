@@ -577,7 +577,7 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
         jobId={job.id}
         jobTitle={job.title}
         companyName={job.company}
-        applyUrl={job.job_url || ""}
+        applyUrl={job.apply_url || job.source_url || job.job_url || ""}
         onApplicationCreated={handleApplicationCreated}
       />
 

@@ -40,6 +40,7 @@ interface DashboardSidebarProps {
     total: number;
     plan: string;
   };
+  initialActiveApplicationsCount?: number;
 }
 
 export function DashboardSidebar({
@@ -49,10 +50,62 @@ export function DashboardSidebar({
     total: 500,
     plan: "Pro Tier",
   },
+  initialActiveApplicationsCount = 0,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { isCollapsed, toggleCollapse, isMobileOpen, setIsMobileOpen } =
     useDashboard();
+
+  const [activeCount, setActiveCount] = React.useState<number>(
+    initialActiveApplicationsCount
+  );
+
+  // Sync state if prop changes
+  React.useEffect(() => {
+    if (typeof initialActiveApplicationsCount === "number") {
+      setActiveCount(initialActiveApplicationsCount);
+    }
+  }, [initialActiveApplicationsCount]);
+
+  const fetchActiveCount = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/applications/active-count", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.count === "number") {
+          setActiveCount(data.count);
+        }
+      }
+    } catch {
+      // Ignore background network errors
+    }
+  }, []);
+
+  // Listen to application update events dispatched from dashboard actions
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      fetchActiveCount();
+    };
+
+    window.addEventListener("applications-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("applications-updated", handleUpdate);
+    };
+  }, [fetchActiveCount]);
+
+  // Re-fetch when navigating to or from pages
+  React.useEffect(() => {
+    fetchActiveCount();
+  }, [pathname, fetchActiveCount]);
+
+  // If there are active applications, poll periodically to clear badge when they complete
+  React.useEffect(() => {
+    if (activeCount <= 0) return;
+    const interval = setInterval(fetchActiveCount, 6000);
+    return () => clearInterval(interval);
+  }, [activeCount, fetchActiveCount]);
 
   const remainingCredits = Math.max(0, credits.total - credits.used);
   const creditPercentage = Math.min(
@@ -81,10 +134,10 @@ export function DashboardSidebar({
       description: "Personal and career background",
     },
     {
-      title: "Application Status",
+      title: "Applications",
       href: "/dashboard/applications",
       icon: ListChecks,
-      badge: "3 Active",
+      badge: activeCount > 0 ? `${activeCount} Active` : undefined,
       description: "Track submission pipeline",
     },
     {

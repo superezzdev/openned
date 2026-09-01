@@ -5,10 +5,10 @@
  * Coordinates: PlatformDetector → FormDetector → FieldMapper →
  *              ProfileResolver → ApplicationFiller → ApplicationSubmitter
  *
- * This is the entry point called by the Inngest worker function.
+ * Works with the BrowserProvider abstraction (LocalBrowserProvider and BrowserbaseProvider).
+ * Supports automatic one-time fallback to Browserbase on infrastructure/browser execution failures.
  */
 
-import { chromium } from "playwright";
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import {
   ApplicationStatus,
@@ -18,12 +18,24 @@ import {
   FieldMappingResult,
   QuestionType,
 } from "./types";
+import {
+  BrowserProvider,
+  PageHandle,
+  BrowserSession,
+  AutomationProvider,
+  selectBrowserProvider,
+  shouldFallbackToBrowserbase,
+  BrowserbaseProvider,
+  saveApplicationAutomationState,
+  createAutomationSessionRecord,
+  completeAutomationSessionRecord,
+} from "../automation";
 import { detectApplicationPlatform, enhancePlatformDetectionFromPage } from "./platform-detector";
-import { detectApplicationFields, detectFormSteps, detectCaptcha, detectLoginRequired } from "./form-detector";
+import { detectApplicationFields, detectFormSteps, detectCaptcha, detectLoginRequired, detectRateLimited, detectPlatformSupported } from "./form-detector";
 import { mapAllFields } from "./field-mapper";
 import { loadAutomationProfile, detectMissingFields, resolveProfileValue } from "./profile-resolver";
-import { fillApplicationForm } from "./application-filler";
-import { submitApplication } from "./application-submitter";
+import { fillApplicationForm, fillSingleField } from "./application-filler";
+import { submitApplication, independentlyVerifySubmission } from "./application-submitter";
 import { updateApplicationStatus, failApplication, logApplicationEvent } from "./application-status-service";
 import { heartbeatApplicationLock } from "./application-locking";
 
@@ -40,6 +52,7 @@ export interface OrchestratorResult {
   status: ApplicationStatus;
   paused: boolean;
   pauseReason?: string;
+  fallbackTriggered?: boolean;
 }
 
 /**
@@ -64,76 +77,144 @@ export async function runApplicationAutomation(
     return { success: false, status: ApplicationStatus.FAILED, paused: false, pauseReason: "not_found" };
   }
 
-  // Idempotency check — do not restart submitted or failed apps
+  // Idempotency check — do not restart submitted or terminal apps
   if ([ApplicationStatus.SUBMITTED, ApplicationStatus.CANCELLED].includes(app.status)) {
     return { success: true, status: app.status, paused: false };
   }
-
-  const userId = app.user_id;
-  const applyUrl = app.apply_url;
-  const browserSessionId = app.browser_session_id || crypto.randomUUID();
 
   // Start heartbeat timer
   const heartbeatTimer = setInterval(async () => {
     await heartbeatApplicationLock(applicationId, workerId);
   }, HEARTBEAT_INTERVAL_MS);
 
-  let browser: any = null;
-  let page: any = null;
+  try {
+    // Select initial browser provider (Local first under AUTO, or user's explicit preference)
+    let provider = selectBrowserProvider(app);
+
+    // Run execution with initial provider
+    const result = await executeWorkflow(app, provider, workerId, heartbeatTimer);
+    return result;
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
+}
+
+/**
+ * Execute application automation workflow with a designated BrowserProvider,
+ * catching infrastructure failures and falling back to Browserbase if eligible.
+ */
+async function executeWorkflow(
+  app: any,
+  provider: BrowserProvider,
+  workerId: string,
+  heartbeatTimer: NodeJS.Timeout
+): Promise<OrchestratorResult> {
+  const supabase = getAdminClient();
+  const applicationId = app.id;
+  const userId = app.user_id;
+  const applyUrl = app.apply_url;
+
+  let session: BrowserSession | null = null;
+  let currentStage: string = app.status || "DETECTING_PLATFORM";
 
   try {
     // -------------------------------------------------------------------------
     // STAGE 1: DETECTING_PLATFORM
     // -------------------------------------------------------------------------
+    currentStage = "DETECTING_PLATFORM";
     await updateApplicationStatus(applicationId, ApplicationStatus.DETECTING_PLATFORM, {
-      browser_session_id: browserSessionId,
+      browser_session_id: app.browser_session_id || undefined,
     });
 
     const platformResult = await detectApplicationPlatform(applyUrl);
 
     // -------------------------------------------------------------------------
-    // STAGE 2: DETECTING_FORM — open browser
+    // STAGE 2: CREATE BROWSER SESSION & OPEN PAGE
     // -------------------------------------------------------------------------
+    currentStage = "DETECTING_FORM";
     await updateApplicationStatus(applicationId, ApplicationStatus.DETECTING_FORM, {
       platform: platformResult.platform,
       platform_confidence: platformResult.confidence,
       platform_detection_method: platformResult.detection_method,
     });
 
-    logApplicationEvent("browser_session_started", {
-      application_id: applicationId,
-      browser_session_id: browserSessionId,
+    // Create session through provider abstraction
+    session = await provider.createSession();
+
+    // Update DB with active session details & provider
+    await supabase
+      .from("applications")
+      .update({
+        browser_session_id: session.id,
+        browser_provider: provider.providerType,
+        automation_provider: provider.providerType,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", applicationId);
+
+    // Record in automation_sessions table
+    await createAutomationSessionRecord(applicationId, provider.providerType, session.id, {
+      debug_url: session.debugUrl,
+      replay_url: session.replayUrl,
       platform: platformResult.platform,
     });
 
-    // Launch Playwright browser (headless)
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      viewport: { width: 1280, height: 800 },
+    logApplicationEvent("browser_session_started", {
+      application_id: applicationId,
+      browser_session_id: session.id,
+      provider: provider.providerType,
+      platform: platformResult.platform,
     });
-    page = await context.newPage();
 
-    // Navigate to apply URL
-    await page.goto(applyUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(2000); // Let JS-rendered content load
+    // Save initial checkpoint
+    await saveApplicationAutomationState(applicationId, {
+      stage: currentStage,
+      platform: platformResult.platform,
+      page_url: applyUrl,
+      provider: provider.providerType,
+      session_id: session.id,
+    });
+
+    // Normalize ATS application URLs if they point to the job description
+    let targetApplyUrl = applyUrl;
+    if (typeof targetApplyUrl === "string") {
+      if (/jobs\.ashbyhq\.com\/[^/]+\/[^/?#]+(?:\/)?$/i.test(targetApplyUrl)) {
+        targetApplyUrl = targetApplyUrl.replace(/\/$/, "") + "/application";
+      } else if (/jobs\.lever\.co\/[^/]+\/[^/?#]+(?:\/)?$/i.test(targetApplyUrl)) {
+        targetApplyUrl = targetApplyUrl.replace(/\/$/, "") + "/apply";
+      }
+    }
+
+    // Open target page via provider abstraction
+    const page = await provider.openPage(session, targetApplyUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    await provider
+      .waitForSelector(
+        page,
+        "form, input:not([type='hidden']), textarea, a[href*='apply'], a[href*='application'], button:has-text('Apply')",
+        { timeout: 6000 }
+      )
+      .catch(() => {});
+    await provider.waitForTimeout(page, 1500); // Allow JS hydration
 
     // Check for rate limiting
-    const { detectRateLimited, detectPlatformSupported } = await import("./form-detector");
-    const isRateLimited = await detectRateLimited(page);
+    const isRateLimited = await detectRateLimited(provider, page);
     if (isRateLimited) {
       clearInterval(heartbeatTimer);
       await failApplication(
         applicationId,
         FailureCode.RATE_LIMITED,
         "This site is temporarily blocking automated access. Please try again later or apply manually.",
-        { stage: "DETECTING_PAGE", url: page.url(), browser_session_id: browserSessionId }
+        { stage: "DETECTING_PAGE", url: await provider.getCurrentUrl(page), browser_session_id: session.id }
       );
       return { success: false, status: ApplicationStatus.FAILED, paused: false };
     }
 
     // Check for login wall
-    const loginRequired = await detectLoginRequired(page);
+    const loginRequired = await detectLoginRequired(provider, page);
     if (loginRequired) {
       clearInterval(heartbeatTimer);
       await updateApplicationStatus(applicationId, ApplicationStatus.AWAITING_USER_ACTION, {
@@ -149,7 +230,7 @@ export async function runApplicationAutomation(
     }
 
     // Check for CAPTCHA
-    const captchaDetected = await detectCaptcha(page);
+    const captchaDetected = await detectCaptcha(provider, page);
     if (captchaDetected) {
       clearInterval(heartbeatTimer);
       await updateApplicationStatus(applicationId, ApplicationStatus.AWAITING_USER_ACTION, {
@@ -165,7 +246,7 @@ export async function runApplicationAutomation(
     }
 
     // Enhance platform detection with DOM signals
-    const enhancedPlatform = await enhancePlatformDetectionFromPage(page, platformResult);
+    const enhancedPlatform = await enhancePlatformDetectionFromPage(provider, page, platformResult);
     if (enhancedPlatform.platform !== platformResult.platform) {
       await supabase
         .from("applications")
@@ -177,42 +258,82 @@ export async function runApplicationAutomation(
         .eq("id", applicationId);
     }
 
-    // Check if platform is supported
-    const platformSupport = await detectPlatformSupported(enhancedPlatform.platform, page);
+    // Check platform support
+    const platformSupport = await detectPlatformSupported(enhancedPlatform.platform, provider, page);
     if (!platformSupport.supported) {
       clearInterval(heartbeatTimer);
       await failApplication(
         applicationId,
         FailureCode.PLATFORM_NOT_SUPPORTED,
         platformSupport.reason || "This job platform isn't fully supported for automated application. You can apply manually.",
-        { stage: "DETECTING_PLATFORM", url: page.url(), browser_session_id: browserSessionId }
+        { stage: "DETECTING_PLATFORM", url: await provider.getCurrentUrl(page), browser_session_id: session.id }
       );
       return { success: false, status: ApplicationStatus.FAILED, paused: false };
     }
 
-    // Detect form fields
-    const detectedFields = await detectApplicationFields(page);
+    // Detect form fields through provider abstraction
+    let detectedFields = await detectApplicationFields(provider, page);
+
+    // If 0 fields found, check if we landed on a job description page with an "Apply" button or link
+    if (detectedFields.length === 0) {
+      logApplicationEvent("searching_apply_button", {
+        application_id: applicationId,
+        current_url: await provider.getCurrentUrl(page),
+      });
+
+      const applySelectors = [
+        "button.jobs-apply-button",
+        "button:has-text('Easy Apply')",
+        "button:has-text('Apply now')",
+        "button:has-text('Apply Now')",
+        "button:has-text('Apply for this job')",
+        "a:has-text('Apply for this job')",
+        "a:has-text('Apply Now')",
+        "button:has-text('Apply')",
+        "a:has-text('Apply')",
+        "[data-live-test-job-apply-button]",
+        "[data-job-id]",
+        "a[href*='/application']",
+        "a[href*='/apply']",
+        "a[data-testid*='apply']",
+        "button[data-testid*='apply']",
+      ];
+
+      for (const sel of applySelectors) {
+        try {
+          const el = await provider.findElement(page, sel);
+          if (el) {
+            await provider.click(page, sel);
+            await provider
+              .waitForSelector(
+                page,
+                ".jobs-easy-apply-modal, div[role='dialog'], form, input:not([type='hidden']), textarea",
+                { timeout: 10000 }
+              )
+              .catch(() => {});
+            await provider.waitForTimeout(page, 1500);
+            detectedFields = await detectApplicationFields(provider, page);
+            if (detectedFields.length > 0) break;
+          }
+        } catch {}
+      }
+    }
 
     if (detectedFields.length === 0) {
-      // No form found — might be a non-standard page
-      await failApplication(
-        applicationId,
-        FailureCode.FIELD_NOT_FOUND,
-        "No application form fields were detected on this page.",
-        { stage: "DETECTING_FORM", url: page.url(), browser_session_id: browserSessionId }
-      );
-      return { success: false, status: ApplicationStatus.FAILED, paused: false };
+      throw new Error("No application form fields were detected on this page.");
     }
 
     // Detect form steps
-    const totalSteps = await detectFormSteps(page);
+    const totalSteps = await detectFormSteps(provider, page);
 
     // Save form schema to DB
-    const formSchemaId = await saveFormSchema(applicationId, enhancedPlatform.platform, page.url(), detectedFields);
+    const currentUrl = await provider.getCurrentUrl(page);
+    const formSchemaId = await saveFormSchema(applicationId, enhancedPlatform.platform, currentUrl, detectedFields);
 
     // -------------------------------------------------------------------------
     // STAGE 3: MAPPING_FIELDS
     // -------------------------------------------------------------------------
+    currentStage = "MAPPING_FIELDS";
     await updateApplicationStatus(applicationId, ApplicationStatus.MAPPING_FIELDS, {
       form_schema_id: formSchemaId,
     });
@@ -229,8 +350,9 @@ export async function runApplicationAutomation(
     // -------------------------------------------------------------------------
     // STAGE 4: Check for missing profile fields
     // -------------------------------------------------------------------------
+    currentStage = "MISSING_PROFILE_INFO";
     const missingProfileFields = detectMissingFields(
-      mappedFields.filter(f => f.mapping.mapped_profile_key !== null),
+      mappedFields.filter((f) => f.mapping.mapped_profile_key !== null),
       profile
     );
 
@@ -243,12 +365,20 @@ export async function runApplicationAutomation(
       logApplicationEvent("application_missing_profile_info", {
         application_id: applicationId,
         missing_count: missingProfileFields.length,
-        browser_session_id: browserSessionId,
+        browser_session_id: session.id,
       });
 
-      // Close browser — session will be restarted when user provides info
-      await browser.close();
-      browser = null;
+      // Save state checkpoint
+      await saveApplicationAutomationState(applicationId, {
+        stage: "MISSING_PROFILE_INFO",
+        form_schema_id: formSchemaId,
+        missing_fields: missingProfileFields,
+        platform: enhancedPlatform.platform,
+        page_url: currentUrl,
+      });
+
+      await provider.closeSession(session);
+      session = null;
 
       return {
         success: false,
@@ -261,71 +391,99 @@ export async function runApplicationAutomation(
     // -------------------------------------------------------------------------
     // STAGE 5: READY_TO_APPLY → FILLING_FORM & RESUME UPLOAD
     // -------------------------------------------------------------------------
+    currentStage = "FILLING_FORM";
     await updateApplicationStatus(applicationId, ApplicationStatus.READY_TO_APPLY);
     await updateApplicationStatus(applicationId, ApplicationStatus.FILLING_FORM);
 
-    // Fill the form and upload resume
-    const fillResults = await fillApplicationForm(page, applicationId, mappedFields, profile);
+    // Save state checkpoint
+    await saveApplicationAutomationState(applicationId, {
+      stage: "FILLING_FORM",
+      form_schema_id: formSchemaId,
+      platform: enhancedPlatform.platform,
+      page_url: currentUrl,
+    });
+
+    // Fill the form and upload resume through provider abstraction
+    const fillResults = await fillApplicationForm(provider, page, applicationId, mappedFields, profile);
 
     // Check if any required field failed because it disappeared from the DOM
-    const missingDisappeared = fillResults.find(r => !r.success && r.error === "field_not_found");
+    const missingDisappeared = fillResults.find((r) => !r.success && r.error === "field_not_found");
     if (missingDisappeared) {
-      const fieldDef = mappedFields.find(f => f.field_id === missingDisappeared.field_id);
+      const fieldDef = mappedFields.find((f) => f.field_id === missingDisappeared.field_id);
       if (fieldDef?.required) {
-        clearInterval(heartbeatTimer);
-        await failApplication(
-          applicationId,
-          FailureCode.FIELD_NOT_FOUND,
-          `A required field "${fieldDef.label || missingDisappeared.field_id}" could not be located on the application form.`,
-          { stage: "FILLING_FORM", field: missingDisappeared.field_id, browser_session_id: browserSessionId }
+        throw new Error(
+          `A required field "${fieldDef.label || missingDisappeared.field_id}" could not be located on the application form.`
         );
-        return { success: false, status: ApplicationStatus.FAILED, paused: false };
       }
     }
 
     // Handle multi-step forms: navigate through pages
     if (totalSteps > 1) {
-      await handleMultiStepForm(page, applicationId, workerId, mappedFields, profile, browserSessionId, totalSteps);
-      // If status changed to paused in handleMultiStepForm, return early
-      const { data: currentApp } = await supabase.from("applications").select("status").eq("id", applicationId).maybeSingle();
+      await handleMultiStepForm(
+        provider,
+        page,
+        applicationId,
+        workerId,
+        mappedFields,
+        profile,
+        session.id,
+        totalSteps
+      );
+
+      const { data: currentApp } = await supabase
+        .from("applications")
+        .select("status")
+        .eq("id", applicationId)
+        .maybeSingle();
+
       if (currentApp?.status && currentApp.status !== ApplicationStatus.FILLING_FORM) {
         clearInterval(heartbeatTimer);
-        await browser.close();
-        browser = null;
+        await provider.closeSession(session);
+        session = null;
         return { success: false, status: currentApp.status, paused: true, pauseReason: "multistep_pause" };
       }
     }
 
     // -------------------------------------------------------------------------
-    // STAGE 5B: Check for unknown employer questions (Step 22-23)
+    // STAGE 5B: Check for unknown employer questions
     // -------------------------------------------------------------------------
     const { data: savedFormFields } = await supabase
       .from("application_form_fields")
-      .select("field_key, current_value, selector")
+      .select("field_key, current_value, selector, type, label, options_json")
       .eq("application_form_id", formSchemaId);
 
-    const answeredMap = new Map((savedFormFields || []).map((sf: any) => [sf.field_key, sf.current_value]));
+    const answeredMap = new Map(
+      (savedFormFields || []).map((sf: any) => [sf.field_key, sf.current_value])
+    );
 
     // Fill previously saved answers to custom questions if any
     for (const sf of savedFormFields || []) {
       if (sf.current_value && sf.selector) {
         try {
-          const loc = page.locator(sf.selector).first();
-          if (await loc.count() > 0 && await loc.isVisible()) {
-            await loc.fill(sf.current_value);
-          }
+          const fieldDef = mappedFields.find(
+            (f) => f.field_id === sf.field_key || f.selector === sf.selector
+          ) || {
+            field_id: sf.field_key,
+            label: sf.label || sf.field_key,
+            type: sf.type || "text",
+            required: false,
+            selector: sf.selector,
+            options: sf.options_json,
+            source: "inferred",
+            page_step: 1,
+          };
+          await fillSingleField(provider, page, fieldDef as any, sf.current_value);
         } catch {}
       }
     }
 
     // Identify unanswered unknown / custom employer questions
-    const unansweredUnknown = mappedFields.filter(f => {
-      if (answeredMap.get(f.field_id)) return false; // already answered
+    const unansweredUnknown = mappedFields.filter((f) => {
+      if (answeredMap.get(f.field_id)) return false;
       if (f.mapping.mapped_profile_key && resolveProfileValue(f.mapping.mapped_profile_key, profile)) {
-        return false; // answered via user profile
+        return false;
       }
       if (f.type === "file" || f.mapping.mapped_profile_key === "resume") return false;
-      // Pause if field is required, or is an explicit custom/open-ended question
       return (
         f.required ||
         f.question_type === QuestionType.OPEN_ENDED ||
@@ -336,7 +494,7 @@ export async function runApplicationAutomation(
 
     if (unansweredUnknown.length > 0) {
       clearInterval(heartbeatTimer);
-      const questionDescriptors = unansweredUnknown.map(q => ({
+      const questionDescriptors = unansweredUnknown.map((q) => ({
         field_key: q.field_id,
         label: q.label,
         type: q.type,
@@ -350,11 +508,17 @@ export async function runApplicationAutomation(
       logApplicationEvent("application_awaiting_user_input", {
         application_id: applicationId,
         unknown_count: unansweredUnknown.length,
-        browser_session_id: browserSessionId,
+        browser_session_id: session.id,
       });
 
-      await browser.close();
-      browser = null;
+      await saveApplicationAutomationState(applicationId, {
+        stage: "AWAITING_USER_INPUT",
+        form_schema_id: formSchemaId,
+        missing_fields: questionDescriptors,
+      });
+
+      await provider.closeSession(session);
+      session = null;
 
       return {
         success: false,
@@ -365,14 +529,19 @@ export async function runApplicationAutomation(
     }
 
     // -------------------------------------------------------------------------
-    // STAGE 6: AWAITING_USER_REVIEW (Step 24)
+    // STAGE 6: AWAITING_USER_REVIEW
     // -------------------------------------------------------------------------
     clearInterval(heartbeatTimer);
     await updateApplicationStatus(applicationId, ApplicationStatus.AWAITING_USER_REVIEW);
 
-    // Close browser — user will confirm, then we re-open for final submission
-    await browser.close();
-    browser = null;
+    await saveApplicationAutomationState(applicationId, {
+      stage: "AWAITING_USER_REVIEW",
+      form_schema_id: formSchemaId,
+    });
+
+    // Close browser session safely — will be re-opened for final submission after review
+    await provider.closeSession(session);
+    session = null;
 
     return {
       success: true,
@@ -380,46 +549,90 @@ export async function runApplicationAutomation(
       paused: true,
       pauseReason: "awaiting_user_review",
     };
-
   } catch (err: any) {
-    clearInterval(heartbeatTimer);
-
-    const errorMsg = err?.message || "Unknown error";
-    console.error("[ApplicationOrchestrator] Error:", {
+    const errorMsg = err?.message || String(err);
+    console.error(`[ApplicationOrchestrator] Provider ${provider.providerType} error:`, {
       application_id: applicationId,
       error: errorMsg,
-      browser_session_id: browserSessionId,
+      stage: currentStage,
     });
 
-    let failureCode = FailureCode.BROWSER_ERROR;
-    if (errorMsg.includes("timeout") || errorMsg.includes("Timeout")) failureCode = FailureCode.TIMEOUT;
-    if (errorMsg.includes("net::ERR")) failureCode = FailureCode.APPLICATION_PAGE_UNAVAILABLE;
+    // -------------------------------------------------------------------------
+    // FALLBACK DECISION LOGIC
+    // -------------------------------------------------------------------------
+    const fallbackDecision = shouldFallbackToBrowserbase(err, app, currentStage);
 
-    await failApplication(
-      applicationId,
-      failureCode,
-      "An error occurred during automation. Please try again or apply manually.",
-      {
-        stage: "ORCHESTRATOR",
-        error: errorMsg,
-        browser_session_id: browserSessionId,
+    if (fallbackDecision.shouldFallback && provider.providerType !== AutomationProvider.BROWSERBASE) {
+      console.log(`[ApplicationOrchestrator] Falling back to Browserbase... Reason: ${fallbackDecision.reason}`);
+
+      // 1. Structured fallback audit log
+      logApplicationEvent("automation_fallback", {
+        application_id: applicationId,
+        from_provider: provider.providerType,
+        to_provider: AutomationProvider.BROWSERBASE,
+        reason: fallbackDecision.reason,
+        stage: currentStage,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 2. Mark fallback in DB
+      await supabase
+        .from("applications")
+        .update({
+          fallback_used: true,
+          fallback_reason: fallbackDecision.reason,
+          automation_provider: AutomationProvider.BROWSERBASE,
+          browser_provider: AutomationProvider.BROWSERBASE,
+          last_automation_error: errorMsg,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", applicationId);
+
+      // 3. Close local session safely
+      if (session) {
+        await provider.closeSession(session).catch(() => {});
+        session = null;
       }
-    );
+
+      // 4. Update memory app object
+      const fallbackApp = {
+        ...app,
+        fallback_used: true,
+        fallback_reason: fallbackDecision.reason,
+        automation_provider: AutomationProvider.BROWSERBASE,
+        browser_provider: AutomationProvider.BROWSERBASE,
+      };
+
+      // 5. Resume same workflow with BrowserbaseProvider
+      const browserbaseProvider = new BrowserbaseProvider();
+      return executeWorkflow(fallbackApp, browserbaseProvider, workerId, heartbeatTimer);
+    }
+
+    // No fallback eligible or Browserbase itself failed: terminal failure
+    clearInterval(heartbeatTimer);
+    const failureCode = fallbackDecision.classifiedError?.failureCode || FailureCode.BROWSER_ERROR;
+    const userMessage = fallbackDecision.classifiedError?.userMessage || "An error occurred during automation.";
+
+    await failApplication(applicationId, failureCode, userMessage, {
+      stage: currentStage,
+      error: errorMsg,
+      browser_session_id: session?.id || app.browser_session_id,
+    });
 
     return { success: false, status: ApplicationStatus.FAILED, paused: false };
   } finally {
-    if (browser) {
-      try { await browser.close(); } catch {}
+    if (session) {
+      await provider.closeSession(session).catch(() => {});
     }
   }
 }
 
 /**
- * Handle multi-step form navigation.
- * Detects "Next" buttons, advances, and fills newly visible fields.
+ * Handle multi-step form navigation through provider abstraction.
  */
 async function handleMultiStepForm(
-  page: any,
+  provider: BrowserProvider,
+  page: PageHandle,
   applicationId: string,
   workerId: string,
   allMappedFields: Array<DetectedField & { mapping: FieldMappingResult }>,
@@ -436,21 +649,19 @@ async function handleMultiStepForm(
   ];
 
   for (let step = 2; step <= totalSteps; step++) {
-    // Click Next
     for (const sel of NEXT_SELECTORS) {
       try {
-        const btn = page.locator(sel).first();
-        if (await btn.count() > 0 && await btn.isVisible()) {
-          await btn.click();
-          await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
-          await page.waitForTimeout(1500);
+        const btn = await provider.findElement(page, sel);
+        if (btn) {
+          await provider.click(page, sel);
+          await provider.waitForTimeout(page, 1500);
           break;
         }
       } catch {}
     }
 
     // Check for CAPTCHA on new step
-    const captchaDetected = await detectCaptcha(page);
+    const captchaDetected = await detectCaptcha(provider, page);
     if (captchaDetected) {
       await updateApplicationStatus(applicationId, ApplicationStatus.AWAITING_USER_ACTION, {
         error_message: "A CAPTCHA appeared on a later step that the AI agent cannot solve.",
@@ -460,32 +671,31 @@ async function handleMultiStepForm(
     }
 
     // Detect newly visible fields
-    const newFields = await detectApplicationFields(page);
-    const newFieldIds = new Set(allMappedFields.map(f => f.field_id));
-    const trulyNewFields = newFields.filter(f => !newFieldIds.has(f.field_id));
+    const newFields = await detectApplicationFields(provider, page);
+    const newFieldIds = new Set(allMappedFields.map((f) => f.field_id));
+    const trulyNewFields = newFields.filter((f) => !newFieldIds.has(f.field_id));
 
     if (trulyNewFields.length > 0) {
       const mappedNew = await mapAllFields(trulyNewFields, profile);
-
-      // Check for new missing required fields
       const { detectMissingFields: detectMF } = await import("./profile-resolver");
       const newMissing = detectMF(mappedNew, profile);
 
       if (newMissing.length > 0) {
-        // Pause for missing fields — save application state
-        const { data: app } = await (await import("@supabase/supabase-js")).createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        ).from("applications").select("missing_fields").eq("id", applicationId).maybeSingle();
+        const supabase = getAdminClient();
+        const { data: appRecord } = await supabase
+          .from("applications")
+          .select("missing_fields")
+          .eq("id", applicationId)
+          .maybeSingle();
 
-        const existingMissing = app?.missing_fields || [];
+        const existingMissing = appRecord?.missing_fields || [];
         await updateApplicationStatus(applicationId, ApplicationStatus.MISSING_PROFILE_INFO, {
           missing_fields: [...existingMissing, ...newMissing],
         });
         return;
       }
 
-      await fillApplicationForm(page, applicationId, mappedNew, profile);
+      await fillApplicationForm(provider, page, applicationId, mappedNew, profile);
     }
 
     await heartbeatApplicationLock(applicationId, workerId);
@@ -494,7 +704,6 @@ async function handleMultiStepForm(
 
 /**
  * Save the detected form schema to the database.
- * Returns the form schema ID.
  */
 async function saveFormSchema(
   applicationId: string,
@@ -549,73 +758,55 @@ async function saveFieldMappings(
 }
 
 /**
- * Resume a paused application (after user fills missing fields or after review approval).
- * Re-opens browser and continues from the appropriate step.
+ * Resume a paused application (after user fills missing fields).
  */
 export async function resumeApplicationAfterMissingFields(
   applicationId: string,
   workerId: string
 ): Promise<OrchestratorResult> {
-  const supabase = getAdminClient();
+  return runApplicationAutomation(applicationId, workerId);
+}
 
+/**
+ * Final submission after user review approval.
+ * Uses provider abstraction and adheres to provider selection.
+ */
+export async function submitAfterReview(
+  applicationId: string,
+  workerId: string
+): Promise<OrchestratorResult> {
+  const supabase = getAdminClient();
   const { data: app } = await supabase
     .from("applications")
     .select("*")
     .eq("id", applicationId)
     .maybeSingle();
 
-  if (!app) {
-    return { success: false, status: ApplicationStatus.FAILED, paused: false };
+  if (!app) return { success: false, status: ApplicationStatus.FAILED, paused: false };
+
+  const validSubmitStatuses = [
+    ApplicationStatus.AWAITING_USER_REVIEW,
+    ApplicationStatus.SUBMITTING,
+    ApplicationStatus.QUEUED,
+  ];
+  if (!validSubmitStatuses.includes(app.status)) {
+    return { success: true, status: app.status, paused: false };
   }
 
-  // Re-run from beginning (browser was closed), but with updated profile
-  return runApplicationAutomation(applicationId, workerId);
-}
-
-/**
- * Final submission after user review approval.
- */
-export async function submitAfterReview(
-  applicationId: string,
-  workerId: string
-): Promise<OrchestratorResult> {
-  let browser: any = null;
+  const provider = selectBrowserProvider(app);
+  let session: BrowserSession | null = null;
 
   try {
-    const supabase = getAdminClient();
-    const { data: app } = await supabase
-      .from("applications")
-      .select("*")
-      .eq("id", applicationId)
-      .maybeSingle();
-
-    if (!app) return { success: false, status: ApplicationStatus.FAILED, paused: false };
-
-    // Accept SUBMITTING, AWAITING_USER_REVIEW, or QUEUED (if resumed by worker)
-    const validSubmitStatuses = [
-      ApplicationStatus.AWAITING_USER_REVIEW,
-      ApplicationStatus.SUBMITTING,
-      ApplicationStatus.QUEUED,
-    ];
-    if (!validSubmitStatuses.includes(app.status)) {
-      return { success: true, status: app.status, paused: false };
-    }
-
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      viewport: { width: 1280, height: 800 },
+    session = await provider.createSession();
+    const page = await provider.openPage(session, app.apply_url, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
     });
-    const page = await context.newPage();
-
-    await page.goto(app.apply_url, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await provider.waitForTimeout(page, 2000);
 
     // CRITICAL: If submit was already attempted in a prior run, NEVER click submit again!
-    // Instead, run independent verification only.
     if (app.debug_info?.submit_attempted) {
-      const { independentlyVerifySubmission } = await import("./application-submitter");
-      const verification = await independentlyVerifySubmission(page, app.apply_url);
+      const verification = await independentlyVerifySubmission(provider, page, app.apply_url);
       if (verification.confirmed) {
         await updateApplicationStatus(applicationId, ApplicationStatus.SUBMITTED, {
           external_application_id: verification.externalAppId,
@@ -625,7 +816,7 @@ export async function submitAfterReview(
       return { success: true, status: ApplicationStatus.SUBMISSION_UNCONFIRMED, paused: false };
     }
 
-    // Re-fill the form before submitting (session may have expired)
+    // Re-fill form before final submit
     const profile = await loadAutomationProfile(app.user_id);
     const { data: formRecord } = await supabase
       .from("application_forms")
@@ -638,28 +829,36 @@ export async function submitAfterReview(
     if (formRecord?.fields_json) {
       const fields = formRecord.fields_json as DetectedField[];
       const mapped = await mapAllFields(fields, profile);
-      await fillApplicationForm(page, applicationId, mapped, profile);
+      await fillApplicationForm(provider, page, applicationId, mapped, profile);
 
-      // Also fill any user-provided answers to custom questions
       const { data: savedAnswers } = await supabase
         .from("application_form_fields")
-        .select("field_key, current_value, selector")
+        .select("field_key, current_value, selector, type, label, options_json")
         .eq("application_form_id", formRecord.id)
         .not("current_value", "is", null);
 
       for (const ans of savedAnswers || []) {
         if (ans.current_value && ans.selector) {
           try {
-            const loc = page.locator(ans.selector).first();
-            if (await loc.count() > 0 && await loc.isVisible()) {
-              await loc.fill(ans.current_value);
-            }
+            const fieldDef = fields.find(
+              (f) => f.field_id === ans.field_key || f.selector === ans.selector
+            ) || {
+              field_id: ans.field_key,
+              label: ans.label || ans.field_key,
+              type: ans.type || "text",
+              required: false,
+              selector: ans.selector,
+              options: ans.options_json,
+              source: "inferred",
+              page_step: 1,
+            };
+            await fillSingleField(provider, page, fieldDef as any, ans.current_value);
           } catch {}
         }
       }
     }
 
-    const { submitted, confirmed, confirmationUrl } = await submitApplication(page, applicationId);
+    const { submitted, confirmed } = await submitApplication(provider, page, applicationId);
 
     return {
       success: submitted,
@@ -667,15 +866,16 @@ export async function submitAfterReview(
       paused: false,
     };
   } catch (err: any) {
-    const supabase = getAdminClient();
     const { data: currentApp } = await supabase
       .from("applications")
       .select("debug_info, status")
       .eq("id", applicationId)
       .maybeSingle();
 
-    // If submit was already clicked, do NOT fail — stay as SUBMISSION_UNCONFIRMED
-    if (currentApp?.debug_info?.submit_attempted || currentApp?.status === ApplicationStatus.SUBMISSION_UNCONFIRMED) {
+    if (
+      currentApp?.debug_info?.submit_attempted ||
+      currentApp?.status === ApplicationStatus.SUBMISSION_UNCONFIRMED
+    ) {
       return { success: true, status: ApplicationStatus.SUBMISSION_UNCONFIRMED, paused: false };
     }
 
@@ -687,6 +887,14 @@ export async function submitAfterReview(
     );
     return { success: false, status: ApplicationStatus.FAILED, paused: false };
   } finally {
-    if (browser) { try { await browser.close(); } catch {} }
+    if (session) {
+      await provider.closeSession(session).catch(() => {});
+    }
   }
 }
+
+export const ApplicationOrchestrator = {
+  run: runApplicationAutomation,
+  resumeAfterMissingFields: resumeApplicationAfterMissingFields,
+  submitAfterReview,
+};

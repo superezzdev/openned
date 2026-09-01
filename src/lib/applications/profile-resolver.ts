@@ -69,10 +69,13 @@ export async function loadAutomationProfile(userId: string): Promise<AutomationP
   const locationStr = profile?.location || "";
   const locationParts = locationStr.split(",").map((s: string) => s.trim());
 
+  const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || null;
+
   return {
     user_id: userId,
     first_name: profile?.first_name || null,
     last_name: profile?.last_name || null,
+    full_name: fullName,
     email: profile?.email || null,
     phone: profile?.phone || null,
     location: locationStr || null,
@@ -105,6 +108,7 @@ export function resolveProfileValue(
   const keyMap: Record<string, () => string | null> = {
     first_name: () => profile.first_name || null,
     last_name: () => profile.last_name || null,
+    full_name: () => profile.full_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ") || null,
     email: () => profile.email || null,
     phone: () => profile.phone || null,
     location: () => profile.location || null,
@@ -119,6 +123,10 @@ export function resolveProfileValue(
     twitter_url: () => profile.twitter_url || null,
     work_authorization: () => profile.work_authorization || null,
     years_experience: () => profile.years_experience?.toString() || null,
+    current_company: () => profile.experiences?.[0]?.company_name || null,
+    current_title: () => profile.experiences?.[0]?.job_title || null,
+    education_school: () => profile.educations?.[0]?.institution || null,
+    education_degree: () => profile.educations?.[0]?.degree || null,
   };
 
   const resolver = keyMap[profileKey];
@@ -223,6 +231,28 @@ export async function updateProfileWithMissingFields(
       if (URL_TYPE_MAP[key]) {
         linkUpdates.push({ url_type: URL_TYPE_MAP[key], url: value.trim() });
       }
+    }
+  }
+
+  // Handle full_name by populating first_name and last_name if missing
+  if (values.full_name?.trim()) {
+    const parts = values.full_name.trim().split(/\s+/);
+    if (!profileUpdates.first_name) {
+      profileUpdates.first_name = parts[0];
+    }
+    if (!profileUpdates.last_name && parts.length > 1) {
+      profileUpdates.last_name = parts.slice(1).join(" ");
+    }
+  }
+
+  // Handle location composition from city/state/country if location not set
+  if (!profileUpdates.location && (values.city || values.state || values.country)) {
+    const locParts = [values.city, values.state, values.country]
+      .filter(Boolean)
+      .map(s => String(s).trim())
+      .filter(Boolean);
+    if (locParts.length > 0) {
+      profileUpdates.location = locParts.join(", ");
     }
   }
 
