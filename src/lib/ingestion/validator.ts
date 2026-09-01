@@ -2,7 +2,34 @@ import { z } from "zod";
 import { NormalizedJob } from "./types";
 
 export const NormalizedJobSchema = z.object({
-  source: z.enum(["greenhouse", "lever", "ashby", "workable", "wellfound", "smartrecruiters", "ycombinator", "adzuna", "custom"]),
+  source: z.enum([
+    "greenhouse",
+    "lever",
+    "ashby",
+    "workable",
+    "wellfound",
+    "smartrecruiters",
+    "ycombinator",
+    "adzuna",
+    "jsearch",
+    "active-jobs-db",
+    "linkedin",
+    "linkedin-jobs",
+    "glassdoor",
+    "job-posting-feed",
+    "jobicy",
+    "remote-jobs",
+    "workday",
+    "google-jobs",
+    "free-yc-jobs",
+    "internships",
+    "indeed",
+    "indeed-rapid",
+    "freelancer",
+    "salary-enricher",
+    "custom",
+  ]),
+
   source_job_id: z.string().min(1, "source_job_id cannot be empty"),
   company_name: z.string().min(1, "company_name cannot be empty"),
   company_logo: z.string().nullable().optional(),
@@ -24,10 +51,11 @@ export const NormalizedJobSchema = z.object({
   salary_interval: z.enum(["yearly", "monthly", "hourly"]).nullable().optional(),
   job_url: z.string().url("job_url must be a valid URL"),
   apply_url: z.string().url("apply_url must be a valid URL"),
-  posted_at: z.string().datetime().nullable().optional(),
-  updated_at_source: z.string().datetime().nullable().optional(),
+  posted_at: z.string().nullable().optional(),
+  updated_at_source: z.string().nullable().optional(),
   raw_payload: z.record(z.string(), z.any()).nullable().optional(),
 });
+
 
 export interface ValidationResult {
   valid: boolean;

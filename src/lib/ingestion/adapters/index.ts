@@ -9,7 +9,7 @@ import { YCombinatorAdapter } from "../../../scrapers/ycombinator";
 import { AdzunaAdapter } from "./adzuna";
 import { FallbackParser } from "./fallback";
 
-const adapters: Record<JobSource, JobSourceAdapter> = {
+const adapters: Partial<Record<JobSource, JobSourceAdapter>> = {
   greenhouse: new GreenhouseAdapter(),
   lever: new LeverAdapter(),
   ashby: new AshbyAdapter(),
@@ -21,6 +21,7 @@ const adapters: Record<JobSource, JobSourceAdapter> = {
   custom: new FallbackParser(),
 };
 
+
 /**
  * Retrieves the adapter corresponding to a specific ATS source type
  */
@@ -28,10 +29,11 @@ export function getAdapterForSource(source: JobSource): JobSourceAdapter {
   const adapter = adapters[source];
   if (!adapter) {
     console.warn(`No registered adapter for source: ${source}. Using custom fallback parser.`);
-    return adapters.custom;
+    return adapters.custom || new FallbackParser();
   }
   return adapter;
 }
+
 
 export {
   GreenhouseAdapter,

@@ -10,8 +10,10 @@
     "jobs:sync": "tsx src/scripts/sync-jobs.ts",
     "jobs:seed": "tsx src/scripts/seed.ts",
     "test": "vitest run",
-    "test:adzuna": "tsx src/scripts/test-adzuna-api.ts"
+    "test:adzuna": "tsx src/scripts/test-adzuna-api.ts",
+    "test:job-providers": "tsx src/scripts/test-job-providers.ts"
   },
+
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@google/genai": "^2.19.0",

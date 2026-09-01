@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { JobRecord } from "@/lib/jobs-service";
+import type { JobRecord } from "@/lib/jobs-constants";
+
 
 interface JobCardProps {
   job: JobRecord;
@@ -62,31 +63,76 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
   let platformLogoSrc = "/platforms/Greenhouse.png";
   let platformBadgeStyle = "bg-emerald-500/10 text-emerald-300 border-emerald-500/25";
 
-  if (platform === "lever") {
+  if (platform.includes("linkedin")) {
+    platformLabel = "LinkedIn";
+    platformLogoSrc = "/platforms/linkedin.svg";
+    platformBadgeStyle = "bg-sky-600/15 text-sky-300 border-sky-500/30";
+  } else if (platform.includes("glassdoor")) {
+    platformLabel = "Glassdoor";
+    platformLogoSrc = "/platforms/glassdoor.svg";
+    platformBadgeStyle = "bg-emerald-600/15 text-emerald-300 border-emerald-500/30";
+  } else if (platform.includes("google")) {
+    platformLabel = "Google Jobs";
+    platformLogoSrc = "/platforms/googlejobs.svg";
+    platformBadgeStyle = "bg-red-500/15 text-red-300 border-red-500/30";
+  } else if (platform.includes("indeed")) {
+    platformLabel = "Indeed";
+    platformLogoSrc = "/platforms/indeed.svg";
+    platformBadgeStyle = "bg-blue-600/15 text-blue-300 border-blue-500/30";
+  } else if (platform.includes("workday")) {
+    platformLabel = "Workday";
+    platformLogoSrc = "/platforms/workday.svg";
+    platformBadgeStyle = "bg-amber-600/15 text-amber-300 border-amber-500/30";
+  } else if (platform.includes("jsearch")) {
+    platformLabel = "JSearch";
+    platformLogoSrc = "/platforms/jsearch.svg";
+    platformBadgeStyle = "bg-indigo-500/15 text-indigo-300 border-indigo-500/30";
+  } else if (platform.includes("jobicy")) {
+    platformLabel = "Jobicy";
+    platformLogoSrc = "/platforms/jobicy.svg";
+    platformBadgeStyle = "bg-cyan-500/15 text-cyan-300 border-cyan-500/30";
+  } else if (platform.includes("remote")) {
+    platformLabel = "Remote Jobs";
+    platformLogoSrc = "/platforms/remotejobs.svg";
+    platformBadgeStyle = "bg-violet-500/15 text-violet-300 border-violet-500/30";
+  } else if (platform.includes("adzuna")) {
+    platformLabel = "Adzuna";
+    platformLogoSrc = "/platforms/adzuna.svg";
+    platformBadgeStyle = "bg-blue-500/15 text-blue-300 border-blue-500/30";
+  } else if (platform.includes("lever")) {
     platformLabel = "Lever";
     platformLogoSrc = "/platforms/Lever.png";
     platformBadgeStyle = "bg-indigo-500/10 text-indigo-300 border-indigo-500/25";
-  } else if (platform === "workable") {
+  } else if (platform.includes("workable")) {
     platformLabel = "Workable";
     platformLogoSrc = "/platforms/Workable.png";
     platformBadgeStyle = "bg-teal-500/10 text-teal-300 border-teal-500/25";
-  } else if (platform === "wellfound") {
+  } else if (platform.includes("wellfound")) {
     platformLabel = "Wellfound";
     platformLogoSrc = "/platforms/wellfound.png";
     platformBadgeStyle = "bg-amber-500/10 text-amber-300 border-amber-500/25";
-  } else if (platform === "ashby") {
+  } else if (platform.includes("ashby")) {
     platformLabel = "Ashby";
     platformLogoSrc = "/platforms/Ashby.png";
     platformBadgeStyle = "bg-purple-500/10 text-purple-300 border-purple-500/25";
-  } else if (platform === "smartrecruiters") {
+  } else if (platform.includes("smartrecruiters")) {
     platformLabel = "SmartRecruiters";
     platformLogoSrc = "/platforms/SmartRecruiters.png";
     platformBadgeStyle = "bg-sky-500/10 text-sky-300 border-sky-500/25";
-  } else if (platform === "ycombinator") {
+  } else if (platform.includes("yc") || platform.includes("ycombinator")) {
     platformLabel = "Y Combinator";
     platformLogoSrc = "/platforms/ycombinator.svg";
     platformBadgeStyle = "bg-orange-500/10 text-orange-300 border-orange-500/25";
+  } else if (platform.includes("freelancer")) {
+    platformLabel = "Freelancer";
+    platformLogoSrc = "/platforms/freelancer.svg";
+    platformBadgeStyle = "bg-blue-400/15 text-blue-300 border-blue-400/30";
+  } else if (platform.includes("internship")) {
+    platformLabel = "Internships";
+    platformLogoSrc = "/platforms/internships.svg";
+    platformBadgeStyle = "bg-pink-500/15 text-pink-300 border-pink-500/30";
   }
+
 
   // Match score color & level
   const matchScore = job.match_score || 85;
@@ -221,12 +267,56 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
         </div>
       </div>
 
-      {/* Middle: Badges (Salary, Job Type, Experience) */}
+      {/* Middle: Badges (Country, Workplace/Remote, Job Type, Experience, Salary, Posted Time) */}
       <div className="flex flex-wrap items-center gap-2 mt-4">
         {job.salary && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-emerald-300 font-mono font-medium">
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-mono font-medium">
             <DollarSign className="w-3 h-3 text-emerald-400" />
             <span>{job.salary}</span>
+          </div>
+        )}
+
+        {/* Workplace badge (Remote / Hybrid / On-site) */}
+        {job.remote_type && (
+          <div
+            className={cn(
+              "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-medium",
+              job.remote_type === "remote"
+                ? "bg-violet-500/10 border-violet-500/25 text-violet-300"
+                : job.remote_type === "hybrid"
+                ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300"
+                : "bg-white/[0.04] border-white/10 text-white/70"
+            )}
+          >
+            <span>{job.remote_type === "remote" ? "🌐 Remote" : job.remote_type === "hybrid" ? "🏢 Hybrid" : "📍 On-site"}</span>
+          </div>
+        )}
+
+        {/* Country badge if present */}
+        {job.country && job.country !== "Worldwide" && (
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white/80">
+            <span>
+              {job.country.includes("United States")
+                ? "🇺🇸"
+                : job.country.includes("United Kingdom")
+                ? "🇬🇧"
+                : job.country.includes("India")
+                ? "🇮🇳"
+                : job.country.includes("Canada")
+                ? "🇨🇦"
+                : job.country.includes("Germany")
+                ? "🇩🇪"
+                : job.country.includes("France")
+                ? "🇫🇷"
+                : job.country.includes("Australia")
+                ? "🇦🇺"
+                : job.country.includes("Netherlands")
+                ? "🇳🇱"
+                : job.country.includes("Singapore")
+                ? "🇸🇬"
+                : "🌐"}
+            </span>
+            <span>{job.country}</span>
           </div>
         )}
 

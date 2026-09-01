@@ -121,6 +121,7 @@ export function DashboardSidebar({
     const linkContent = (
       <Link
         href={item.href}
+        prefetch={true}
         onClick={() => setIsMobileOpen(false)}
         className={cn(
           "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",

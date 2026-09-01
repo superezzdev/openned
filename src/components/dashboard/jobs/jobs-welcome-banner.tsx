@@ -74,11 +74,13 @@ export function JobsWelcomeBanner({
               <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
             </h1>
             <p className="text-sm sm:text-base text-white/60 mt-1 leading-relaxed">
-              Curated roles matched from <span className="text-emerald-400 font-medium">Greenhouse</span>,{" "}
-              <span className="text-indigo-400 font-medium">Lever</span>,{" "}
-              <span className="text-teal-400 font-medium">Workable</span>, and{" "}
-              <span className="text-amber-400 font-medium">Wellfound</span> against your profile skills, experience, and location preferences.
+              Curated roles aggregated from <span className="text-sky-400 font-medium">LinkedIn</span>,{" "}
+              <span className="text-emerald-400 font-medium">Glassdoor</span>,{" "}
+              <span className="text-red-400 font-medium">Google Jobs</span>,{" "}
+              <span className="text-blue-400 font-medium">Indeed</span>,{" "}
+              <span className="text-amber-400 font-medium">Workday</span>, and 14+ top job providers.
             </p>
+
           </div>
         </div>
 

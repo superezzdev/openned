@@ -1,125 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchAdzunaJobs, AdzunaError } from "@/lib/ingestion/adapters/adzuna";
-import { computeJobContentHash } from "@/lib/ingestion/hasher";
-import { createClient } from "@/lib/supabase/server";
+import { jobSearchService } from "@/lib/job-providers";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const source = searchParams.get("source") || "adzuna";
+
+    // 1. Query & Location
     const query = searchParams.get("query") || searchParams.get("what") || "";
     const location = searchParams.get("location") || searchParams.get("where") || "";
     const country = searchParams.get("country") || process.env.ADZUNA_COUNTRY || "in";
-    const pageParam = searchParams.get("page");
-    const resultsPerPageParam = searchParams.get("resultsPerPage") || searchParams.get("results_per_page");
-    const persist = searchParams.get("persist") !== "false";
 
-    // 1. Validation
+    // 2. Pagination
+    const pageParam = searchParams.get("page");
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     if (isNaN(page) || page < 1) {
       return NextResponse.json(
-        { error: "INVALID_PARAMETER", message: "Page parameter must be an integer greater than or equal to 1." },
+        { error: "INVALID_PARAMETER", message: "Page parameter must be an integer >= 1." },
         { status: 400 }
       );
     }
 
-    const resultsPerPage = resultsPerPageParam ? parseInt(resultsPerPageParam, 10) : 20;
-    if (isNaN(resultsPerPage) || resultsPerPage < 1 || resultsPerPage > 50) {
+    const limitParam =
+      searchParams.get("limit") ||
+      searchParams.get("resultsPerPage") ||
+      searchParams.get("results_per_page");
+    const limit = limitParam ? parseInt(limitParam, 10) : 20;
+    if (isNaN(limit) || limit < 1 || limit > 50) {
       return NextResponse.json(
-        { error: "INVALID_PARAMETER", message: "resultsPerPage must be an integer between 1 and 50." },
+        { error: "INVALID_PARAMETER", message: "limit / resultsPerPage must be between 1 and 50." },
         { status: 400 }
       );
     }
 
-    if (source !== "adzuna") {
-      return NextResponse.json(
-        { error: "UNSUPPORTED_SOURCE", message: `Search source '${source}' is not supported. Supported sources: 'adzuna'.` },
-        { status: 400 }
-      );
+    // 3. Source Filtering
+    const rawSources = searchParams.getAll("sources");
+    const singleSource = searchParams.get("source");
+    let sources: string[] | undefined = undefined;
+
+    if (rawSources.length > 0) {
+      sources = rawSources.flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+    } else if (singleSource && singleSource !== "all") {
+      sources = singleSource.split(",").map((s) => s.trim()).filter(Boolean);
     }
 
-    // 2. Call Adzuna Service
-    const searchResult = await searchAdzunaJobs({
+    // 4. Filters & Mode
+    const remote = searchParams.get("remote") === "true";
+    const mode = (searchParams.get("mode") === "parallel" ? "parallel" : "sequential") as "sequential" | "parallel";
+    const persist = searchParams.get("persist") !== "false";
+    const datePosted = searchParams.get("datePosted") || undefined;
+    const experienceLevel = searchParams.get("experienceLevel") || undefined;
+    const salaryMin = searchParams.get("salaryMin") ? parseInt(searchParams.get("salaryMin")!, 10) : undefined;
+    const employmentTypes = searchParams.getAll("employmentType");
+
+    // 5. Execute Unified Job Search
+    const searchResponse = await jobSearchService.search({
       query: query || undefined,
       location: location || undefined,
       country: country || undefined,
       page,
-      resultsPerPage,
+      limit,
+      remote,
+      sources,
+      mode,
+      persist,
+      datePosted,
+      experienceLevel,
+      salaryMin: !isNaN(salaryMin as number) ? salaryMin : undefined,
+      employmentType: employmentTypes.length > 0 ? employmentTypes : undefined,
     });
 
-    // 3. Database Persistence (optional / background indexing)
-    if (persist && searchResult.jobs.length > 0) {
-      try {
-        const supabase = await createClient();
-        const nowIso = new Date().toISOString();
-
-        const jobsToUpsert = searchResult.jobs.map((job) => ({
-          source: "adzuna",
-          source_job_id: job.source_job_id,
-          company_name: job.company_name,
-          company_logo: job.company_logo || "/platforms/adzuna.svg",
-          title: job.title,
-          description: job.description || null,
-          description_html: job.description_html || null,
-          location: job.location || null,
-          locations_json: job.locations_json || [],
-          country: job.country || null,
-          region: job.region || null,
-          city: job.city || null,
-          remote_type: job.remote_type || null,
-          employment_type: job.employment_type || null,
-          department: job.department || null,
-          team: job.team || null,
-          salary_min: job.salary_min || null,
-          salary_max: job.salary_max || null,
-          salary_currency: job.salary_currency || null,
-          salary_interval: job.salary_interval || null,
-          job_url: job.job_url,
-          apply_url: job.apply_url,
-          posted_at: job.posted_at || null,
-          updated_at_source: job.updated_at_source || null,
-          scraped_at: nowIso,
-          last_seen_at: nowIso,
-          active: true,
-          raw_payload: job.raw_payload || null,
-          content_hash: computeJobContentHash(job),
-          updated_at: nowIso,
-        }));
-
-        await supabase
-          .from("canonical_jobs")
-          .upsert(jobsToUpsert, { onConflict: "source,source_job_id" });
-      } catch (dbErr: unknown) {
-        // Non-blocking database indexing log
-        const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-        console.warn("[adzuna-search] Could not persist search jobs to DB:", dbMsg);
-      }
-    }
-
-    // 4. Return Normalized Search Response
-    return NextResponse.json({
-      source: "adzuna",
-      jobs: searchResult.jobs,
-      pagination: searchResult.pagination,
-    });
+    return NextResponse.json(searchResponse);
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("[adzuna-search] Error in GET /api/jobs/search:", errorMsg);
-
-    if (error instanceof AdzunaError) {
-      return NextResponse.json(
-        {
-          error: error.code,
-          message: error.message,
-        },
-        { status: error.status || 500 }
-      );
-    }
+    console.error("[job-search-api] Unhandled error in GET /api/jobs/search:", errorMsg);
 
     return NextResponse.json(
       {
         error: "INTERNAL_SEARCH_ERROR",
-        message: errorMsg || "An error occurred while executing job search.",
+        message: errorMsg || "An unexpected error occurred while executing job search.",
       },
       { status: 500 }
     );
