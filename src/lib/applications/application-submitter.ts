@@ -111,15 +111,45 @@ export async function preSubmissionChecks(
   return { canSubmit: true };
 }
 
+import { BrowserProvider, PageHandle } from "../automation/types";
+
+function resolveSubmitterContext(
+  arg1: any,
+  arg2: any,
+  arg3?: any
+): {
+  provider: BrowserProvider | null;
+  page: any;
+  rawPage: any;
+  applicationId: string;
+} {
+  if (arg3 !== undefined) {
+    return {
+      provider: arg1,
+      page: arg2,
+      rawPage: arg2?.rawPage || arg2,
+      applicationId: arg3,
+    };
+  }
+  return {
+    provider: null,
+    page: arg1,
+    rawPage: arg1?.rawPage || arg1,
+    applicationId: arg2,
+  };
+}
+
 /**
- * Submit the application.
+ * Submit the application through BrowserProvider or Playwright page.
  * Returns true if submission was confirmed, false otherwise.
  * A browser/network timeout after clicking Submit must NOT automatically cause another submission.
  */
 export async function submitApplication(
-  page: any, // Playwright Page
-  applicationId: string
+  arg1: any,
+  arg2: any,
+  arg3?: any
 ): Promise<{ submitted: boolean; confirmed: boolean; confirmationUrl?: string; externalAppId?: string }> {
+  const { provider, page, rawPage, applicationId } = resolveSubmitterContext(arg1, arg2, arg3);
   const supabase = getAdminClient();
 
   // 1. Pre-submission checks
@@ -137,30 +167,51 @@ export async function submitApplication(
   await updateApplicationStatus(applicationId, ApplicationStatus.SUBMITTING);
 
   // 3. Record the URL before submitting (for debug)
-  const preSubmitUrl = page.url();
+  const preSubmitUrl = typeof page.url === "function" ? page.url() : (rawPage?.url?.() || "");
 
   // 4. Find and click the submit button
   let submitClicked = false;
   for (const selector of SUBMIT_SELECTORS) {
     try {
-      const btn = page.locator(selector).first();
-      if (await btn.count() > 0 && await btn.isVisible()) {
-        // Mark submit_attempted BEFORE/UPON click in DB so any concurrent or retry worker is blocked
-        await supabase
-          .from("applications")
-          .update({
-            debug_info: {
-              submit_attempted: true,
-              submit_clicked_at: new Date().toISOString(),
-              pre_submit_url: preSubmitUrl,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", applicationId);
+      if (provider?.click) {
+        const el = await provider.findElement(page, selector);
+        if (el) {
+          // Mark submit_attempted BEFORE/UPON click in DB so any concurrent or retry worker is blocked
+          await supabase
+            .from("applications")
+            .update({
+              debug_info: {
+                submit_attempted: true,
+                submit_clicked_at: new Date().toISOString(),
+                pre_submit_url: preSubmitUrl,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", applicationId);
 
-        await btn.click();
-        submitClicked = true;
-        break;
+          await provider.click(page, selector);
+          submitClicked = true;
+          break;
+        }
+      } else if (rawPage?.locator) {
+        const btn = rawPage.locator(selector).first();
+        if (await btn.count() > 0 && await btn.isVisible()) {
+          await supabase
+            .from("applications")
+            .update({
+              debug_info: {
+                submit_attempted: true,
+                submit_clicked_at: new Date().toISOString(),
+                pre_submit_url: preSubmitUrl,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", applicationId);
+
+          await btn.click();
+          submitClicked = true;
+          break;
+        }
       }
     } catch {
       continue;
@@ -178,23 +229,32 @@ export async function submitApplication(
   }
 
   // 5. Wait for page to respond with timeout safety
-  // A browser/network timeout after clicking Submit must NOT throw or cause re-submission
   try {
-    await Promise.race([
-      page.waitForNavigation({ timeout: 8000 }).catch(() => {}),
-      page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {}),
-    ]);
+    if (rawPage?.waitForNavigation) {
+      await Promise.race([
+        rawPage.waitForNavigation({ timeout: 8000 }).catch(() => {}),
+        rawPage.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {}),
+      ]);
+    } else if (provider?.waitForTimeout) {
+      await provider.waitForTimeout(page, 2000);
+    }
   } catch (err: any) {
     console.warn("[ApplicationSubmitter] Post-submit wait timeout (page may still have submitted):", err?.message);
   }
   try {
-    await page.waitForTimeout(500);
+    if (rawPage?.waitForTimeout) {
+      await rawPage.waitForTimeout(500);
+    } else if (provider?.waitForTimeout) {
+      await provider.waitForTimeout(page, 500);
+    }
   } catch {}
 
-  const postSubmitUrl = page.url();
+  const postSubmitUrl = typeof page.url === "function" ? page.url() : (rawPage?.url?.() || "");
 
   // 6. Independent verification of submission
-  const verification = await independentlyVerifySubmission(page, preSubmitUrl);
+  const verification = provider
+    ? await independentlyVerifySubmission(provider, page, preSubmitUrl)
+    : await independentlyVerifySubmission(page, preSubmitUrl);
 
   if (verification.hasError) {
     // Explicit error from server
@@ -266,26 +326,56 @@ export interface SubmissionVerificationResult {
 
 /**
  * Independently verify submission status without trusting previous state.
+ * Supports both:
+ * independentlyVerifySubmission(provider, page, preSubmitUrl)
+ * independentlyVerifySubmission(page, preSubmitUrl)
  */
 export async function independentlyVerifySubmission(
-  page: any,
-  preSubmitUrl?: string
+  arg1: any,
+  arg2?: any,
+  arg3?: any
 ): Promise<SubmissionVerificationResult> {
+  let provider: BrowserProvider | null = null;
+  let page: any;
+  let rawPage: any;
+  let preSubmitUrl: string | undefined;
+
+  if (arg1?.providerType && arg2) {
+    provider = arg1;
+    page = arg2;
+    rawPage = arg2?.rawPage || arg2;
+    preSubmitUrl = arg3;
+  } else if (arg3 !== undefined && typeof arg3 === "string" && typeof arg2 !== "string") {
+    provider = arg1;
+    page = arg2;
+    rawPage = arg2?.rawPage || arg2;
+    preSubmitUrl = arg3;
+  } else {
+    page = arg1;
+    rawPage = arg1?.rawPage || arg1;
+    preSubmitUrl = typeof arg2 === "string" ? arg2 : undefined;
+  }
+
+
   try {
-    const postSubmitUrl = page.url();
+    const postSubmitUrl = typeof page.url === "function" ? page.url() : (rawPage?.url?.() || "");
+    const evaluate = <T = any, R = any>(fn: any, a?: T): Promise<R> =>
+      provider?.evaluate ? provider.evaluate(page, fn, a) : rawPage.evaluate(fn, a);
 
     // 1. Check for explicit error banners first
     for (const sel of ERROR_SELECTORS) {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        const errText = await el.textContent().catch(() => "");
-        if (errText && errText.trim().length > 3) {
-          return { confirmed: false, hasError: true, errorMessage: errText.trim() };
+      if (rawPage?.locator) {
+        const el = rawPage.locator(sel).first();
+        if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
+          const errText = await el.textContent().catch(() => "");
+          if (errText && errText.trim().length > 3) {
+            return { confirmed: false, hasError: true, errorMessage: errText.trim() };
+          }
         }
       }
     }
 
-    const bodyText: string = await page.evaluate(() => document.body.textContent || "").catch(() => "");
+    const bodyText: string = await evaluate(() => document.body.textContent || "").catch(() => "");
     for (const pattern of ERROR_TEXT_PATTERNS) {
       const match = bodyText.match(pattern);
       if (match) {
@@ -301,10 +391,12 @@ export async function independentlyVerifySubmission(
 
     // 3. Check DOM for confirmation elements
     for (const sel of CONFIRMATION_SELECTORS) {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        const externalAppId = await detectExternalApplicationId(page);
-        return { confirmed: true, confirmedVia: "dom", hasError: false, externalAppId: externalAppId || undefined };
+      if (rawPage?.locator) {
+        const el = rawPage.locator(sel).first();
+        if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
+          const externalAppId = await detectExternalApplicationId(page);
+          return { confirmed: true, confirmedVia: "dom", hasError: false, externalAppId: externalAppId || undefined };
+        }
       }
     }
 
@@ -342,12 +434,13 @@ export async function detectSubmissionSuccess(page: any): Promise<boolean> {
  */
 export async function detectExternalApplicationId(page: any): Promise<string | null> {
   try {
-    // Look for application reference numbers in URL or page text
-    const url = page.url();
+    const rawPage = page?.rawPage || page;
+    const url = typeof page.url === "function" ? page.url() : (rawPage?.url?.() || "");
     const refMatch = url.match(/[?&](application_id|ref|id|confirmation)=([a-zA-Z0-9_-]+)/);
     if (refMatch) return refMatch[2];
 
-    const pageText: string = await page.evaluate(() => document.body.textContent || "").catch(() => "");
+    const evaluate = (fn: any) => (rawPage?.evaluate ? rawPage.evaluate(fn) : page.evaluate(fn));
+    const pageText: string = await evaluate(() => document.body.textContent || "").catch(() => "");
     const textMatch = pageText.match(/(?:application|reference|confirmation)\s*(?:id|number|#)[\s:]*([A-Z0-9_-]{5,20})/i);
     if (textMatch) return textMatch[1];
 
@@ -356,4 +449,11 @@ export async function detectExternalApplicationId(page: any): Promise<string | n
     return null;
   }
 }
+
+export const ApplicationSubmitter = {
+  submit: submitApplication,
+  verify: independentlyVerifySubmission,
+  preSubmissionChecks,
+};
+
 

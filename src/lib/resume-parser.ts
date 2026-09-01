@@ -1,6 +1,8 @@
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
-import { GoogleGenAI } from "@google/genai";
+import { parseResumeStrict, strictHeuristicFallback } from "./resume/parser-engine";
+import { ResumeProfileValidator } from "./resume/validator";
+import { StrictResumeExtraction, EvidenceField } from "./resume/types";
 
 export interface ParsedProfile {
   first_name: string;
@@ -49,6 +51,7 @@ export interface ParsedResumeData {
   projects: ParsedProject[];
   certifications: ParsedCertification[];
   links: ParsedLink[];
+  strict?: StrictResumeExtraction;
 }
 
 /**
@@ -117,391 +120,124 @@ export async function extractTextFromResume(
 }
 
 /**
- * Intelligent heuristic fallback parser that segments resumes into sections.
+ * Converts StrictResumeExtraction to the legacy ParsedResumeData format
+ * while ensuring ZERO hallucination.
  */
-export function heuristicResumeParser(
-  rawText: string,
-  defaultEmail: string = ""
+export function convertStrictToLegacy(
+  strict: StrictResumeExtraction,
+  fallbackEmail = ""
 ): ParsedResumeData {
-  const cleanText = rawText.replace(/\r\n/g, "\n");
-  const lines = cleanText
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  // 1. Extract Email
-  const emailMatch = cleanText.match(
-    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-  );
-  const email = emailMatch ? emailMatch[0] : defaultEmail;
-
-  // 2. Extract Phone
-  const phoneMatch = cleanText.match(
-    /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/
-  );
-  const phone = phoneMatch ? phoneMatch[0] : "";
-
-  // 3. Extract Links
-  const links: ParsedLink[] = [];
-  const linkMatches = cleanText.match(
-    /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)/gi
-  );
-  if (linkMatches) {
-    const uniqueLinks = Array.from(new Set(linkMatches)).filter(
-      (u) => !u.includes("w3.org") && !u.includes("adobe.com") && !u.includes("schema.org")
-    );
-    for (const url of uniqueLinks) {
-      const lower = url.toLowerCase();
-      let url_type = "Website";
-      if (lower.includes("linkedin.com")) url_type = "LinkedIn";
-      else if (lower.includes("github.com")) url_type = "GitHub";
-      else if (lower.includes("twitter.com") || lower.includes("x.com"))
-        url_type = "Twitter";
-      else if (lower.includes("leetcode.com")) url_type = "LeetCode";
-      else if (lower.includes("portfolio") || lower.includes("vercel.app") || lower.includes(".dev"))
-        url_type = "Portfolio";
-
-      links.push({ url_type, url });
-    }
-  }
-
-  // 4. Extract Name
-  let first_name = "";
-  let last_name = "";
-  for (let i = 0; i < Math.min(lines.length, 5); i++) {
-    const line = lines[i];
-    if (
-      !line.includes("@") &&
-      !line.includes("http") &&
-      !line.includes("+") &&
-      line.length < 50 &&
-      !/^(SUMMARY|EXPERIENCE|EDUCATION|SKILLS|PROJECTS)/i.test(line) &&
-      /^[A-Za-z\s.'-]+$/.test(line)
-    ) {
-      const parts = line.split(/\s+/);
-      if (parts.length >= 2) {
-        first_name = parts[0];
-        last_name = parts.slice(1).join(" ");
-        break;
-      } else if (parts.length === 1 && !first_name) {
-        first_name = parts[0];
-      }
-    }
-  }
-
-  // 5. Section Segmentation
-  const sectionKeywords = [
-    { key: "SUMMARY", pattern: /^(?:professional\s+summary|summary|profile|about\s+me|objective)$/i },
-    { key: "EXPERIENCE", pattern: /^(?:work\s+experience|experience|employment\s+history|career\s+history)$/i },
-    { key: "PROJECTS", pattern: /^(?:projects|key\s+projects|personal\s+projects)$/i },
-    { key: "SKILLS", pattern: /^(?:technical\s+skills|skills|core\s+competencies|technologies)$/i },
-    { key: "EDUCATION", pattern: /^(?:education|academic\s+background|academics|qualifications)$/i },
-    { key: "CERTIFICATIONS", pattern: /^(?:certifications|certificates|licenses|accreditations)$/i },
-  ];
-
-  interface SectionBlock {
-    key: string;
-    startIndex: number;
-  }
-
-  const detectedSections: SectionBlock[] = [];
-  lines.forEach((line, idx) => {
-    if (line.length <= 40) {
-      for (const s of sectionKeywords) {
-        if (s.pattern.test(line) && !detectedSections.some((ds) => ds.key === s.key)) {
-          detectedSections.push({ key: s.key, startIndex: idx });
-          break;
-        }
-      }
-    }
-  });
-
-  detectedSections.sort((a, b) => a.startIndex - b.startIndex);
-
-  const getSectionLines = (key: string): string[] => {
-    const secIdx = detectedSections.findIndex((s) => s.key === key);
-    if (secIdx === -1) return [];
-    const start = detectedSections[secIdx].startIndex + 1;
-    const end =
-      secIdx + 1 < detectedSections.length
-        ? detectedSections[secIdx + 1].startIndex
-        : lines.length;
-    return lines.slice(start, end);
-  };
-
-  // Extract Summary
-  const summaryLines = getSectionLines("SUMMARY");
-  const summary = summaryLines.join(" ").trim();
-
-  // Extract Skills
-  const skillLines = getSectionLines("SKILLS");
+  // Collect all valid skills
   const skillsSet = new Set<string>();
-  skillLines.forEach((line) => {
-    // Strip labels like "Languages:", "AI / ML:", "Frontend:"
-    const cleaned = line.replace(/^[A-Za-z0-9\s/&]+:\s*/, "");
-    cleaned.split(/[,•|;·/]/).forEach((s) => {
-      const trimmed = s.trim();
-      if (
-        trimmed.length > 1 &&
-        trimmed.length < 40 &&
-        !/^\d+$/.test(trimmed) &&
-        !trimmed.toLowerCase().includes("embedded document")
-      ) {
-        skillsSet.add(trimmed);
+  Object.values(strict.skills).forEach((group: Array<EvidenceField<string>>) => {
+    group.forEach((s: EvidenceField<string>) => {
+      if (s.value && s.value.trim().length > 0) {
+        skillsSet.add(s.value.trim());
       }
     });
   });
 
-  // Extract Experiences
-  const expLines = getSectionLines("EXPERIENCE");
-  const experiences: ParsedExperience[] = [];
-  let currentExp: ParsedExperience | null = null;
-
-  expLines.forEach((line) => {
-    const isBullet = line.startsWith("•") || line.startsWith("-") || line.startsWith("*");
-    const hasDate = /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}\s*[-–—]\s*(?:Present|\d{4}))/i.test(line);
-
-    if (!isBullet && (hasDate || line.includes("·") || line.includes(" - "))) {
-      if (currentExp) experiences.push(currentExp);
-      
-      const titleParts = line.split(/[·•|-]/);
-      currentExp = {
-        job_title: titleParts[0]?.trim() || "Software Developer",
-        company_name: titleParts[1]?.trim() || "Company",
-        duration: line.match(/(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*[-–—]\s*(?:Present|\d{4})/i)?.[0] || "Present",
-        responsibilities: "",
+  // Convert experiences
+  const experiences: ParsedExperience[] = strict.experience
+    .filter((exp) => exp.company.value || exp.title.value)
+    .map((exp) => {
+      const duration = [exp.start_date.value, exp.end_date.value].filter(Boolean).join(" - ");
+      const responsibilities = exp.achievements.map((a) => a.value).join("\n• ") || exp.description.value || "";
+      return {
+        company_name: exp.company.value || "",
+        job_title: exp.title.value || "",
+        duration,
+        responsibilities: responsibilities ? (responsibilities.startsWith("•") ? responsibilities : `• ${responsibilities}`) : "",
       };
-    } else if (currentExp) {
-      if (currentExp.responsibilities) {
-        currentExp.responsibilities += "\n" + line;
-      } else {
-        currentExp.responsibilities = line;
+    });
+
+  // Convert educations
+  const educations: ParsedEducation[] = strict.education
+    .filter((edu) => edu.institution.value || edu.degree.value)
+    .map((edu) => {
+      const duration = [edu.start_date.value, edu.end_date.value].filter(Boolean).join(" - ");
+      let fieldOfStudy = edu.field_of_study.value || "";
+      if (edu.grade.value) {
+        fieldOfStudy += fieldOfStudy ? ` (CGPA / Grade: ${edu.grade.value})` : `Grade: ${edu.grade.value}`;
       }
-    }
-  });
-  if (currentExp) experiences.push(currentExp);
-
-  // Extract Projects
-  const projectLines = getSectionLines("PROJECTS");
-  const projects: ParsedProject[] = [];
-  let currentProj: ParsedProject | null = null;
-
-  projectLines.forEach((line) => {
-    const isBullet = line.startsWith("•") || line.startsWith("-") || line.startsWith("*");
-
-    if (!isBullet && line.length < 100) {
-      if (currentProj) projects.push(currentProj);
-      const name = line.split(/[·•|-]/)[0]?.trim() || line;
-      currentProj = {
-        project_name: name,
-        description: line,
-        link: "",
+      return {
+        institution: edu.institution.value || "",
+        degree: edu.degree.value || "",
+        field_of_study: fieldOfStudy,
+        duration,
       };
-    } else if (currentProj) {
-      if (currentProj.description) {
-        currentProj.description += " " + line;
-      } else {
-        currentProj.description = line;
+    });
+
+  // Convert projects
+  const projects: ParsedProject[] = strict.projects
+    .filter((proj) => proj.name.value)
+    .map((proj) => {
+      const techStr = proj.technologies.map((t) => t.value).filter(Boolean).join(", ");
+      let desc = proj.description.value || "";
+      if (techStr) {
+        desc = `[Technologies: ${techStr}]\n${desc}`.trim();
       }
-    }
-  });
-  if (currentProj) projects.push(currentProj);
-
-  // Extract Education
-  const eduLines = getSectionLines("EDUCATION");
-  const educations: ParsedEducation[] = [];
-  let currentEdu: ParsedEducation | null = null;
-
-  eduLines.forEach((line) => {
-    if (/university|college|institute|school|bachelor|master|b\.e\.|b\.tech|b\.s\.|m\.s\.|phd|graduate/i.test(line)) {
-      if (currentEdu) educations.push(currentEdu);
-      currentEdu = {
-        institution: line.split(/[·•,|-]/)[1]?.trim() || line.split(/[·•,|-]/)[0]?.trim() || "University",
-        degree: line.split(/[·•,|-]/)[0]?.trim() || "Bachelor of Engineering",
-        field_of_study: "Computer Engineering",
-        duration: line.match(/\d{4}\s*[-–—]\s*\d{4}/)?.[0] || "2021 – 2025",
+      return {
+        project_name: proj.name.value || "",
+        description: desc,
+        link: proj.links[0]?.value || "",
       };
-    } else if (currentEdu) {
-      if (line.toLowerCase().includes("minor")) {
-        currentEdu.field_of_study += ` (${line.trim()})`;
-      }
-    }
-  });
-  if (currentEdu) educations.push(currentEdu);
+    });
+
+  // Convert certifications
+  const certifications: ParsedCertification[] = strict.certifications.map((cert) => ({
+    certification_name: cert.certification_name,
+    issuer: cert.issuer || "",
+  }));
+
+  // Convert links
+  const links: ParsedLink[] = [];
+  if (strict.links.linkedin?.url) links.push({ url_type: "LinkedIn", url: strict.links.linkedin.url });
+  if (strict.links.github?.url) links.push({ url_type: "GitHub", url: strict.links.github.url });
+  if (strict.links.leetcode?.url) links.push({ url_type: "LeetCode", url: strict.links.leetcode.url });
+  if (strict.links.codeforces?.url) links.push({ url_type: "CodeForces", url: strict.links.codeforces.url });
+  if (strict.links.codechef?.url) links.push({ url_type: "CodeChef", url: strict.links.codechef.url });
+  if (strict.links.portfolio?.url) links.push({ url_type: "Portfolio", url: strict.links.portfolio.url });
 
   return {
     profile: {
-      first_name,
-      last_name,
-      email,
-      phone,
-      location: "",
-      summary,
+      first_name: strict.personal.first_name.value || "",
+      last_name: strict.personal.last_name.value || "",
+      email: strict.personal.email.value || fallbackEmail,
+      phone: strict.personal.phone.value || "",
+      location: strict.personal.location.value || "",
+      summary: "", // Do not generate a fake summary
     },
     skills: Array.from(skillsSet),
     experiences,
     educations,
     projects,
-    certifications: [],
+    certifications,
     links,
+    strict,
   };
 }
 
 /**
- * Main parser entry point: Attempts Gemini AI extraction first, falling back to heuristic parsing.
+ * Heuristic fallback parser without ANY fake or hardcoded mock defaults.
+ */
+export function heuristicResumeParser(
+  rawText: string,
+  defaultEmail: string = ""
+): ParsedResumeData {
+  const strict = strictHeuristicFallback(rawText);
+  return convertStrictToLegacy(strict, defaultEmail);
+}
+
+/**
+ * Main parser entry point: Runs strict zero-hallucination Gemini extraction
+ * validated by ResumeProfileValidator.
  */
 export async function parseResumeText(
   rawText: string,
   userEmail: string = ""
 ): Promise<ParsedResumeData> {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey) {
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-
-      const prompt = `You are a world-class resume extraction and ATS parsing AI. Extract all information from the resume text below into a clean, comprehensive, highly accurate JSON structure.
-
-RESUME CONTENT:
-"""
-${rawText}
-"""
-
-EXTRACTION RULES:
-1. "profile": Extract the candidate's first name, last name, actual email address from the resume text (or '${userEmail}'), phone number, location (City, Country), and full professional summary.
-2. "skills": Extract every individual technical skill, library, framework, programming language, tool, database, and concept mentioned (e.g. "Python", "SQL", "LangChain", "RAG", "GraphRAG", "TensorFlow", "FastAPI", "React", "PostgreSQL", "Neo4j", "Docker", "AWS", etc.). Split comma-separated and category lists into individual items.
-3. "experiences": Extract each work experience position with exact company_name, job_title, duration (e.g. "Aug 2025 - Present"), and all bullet points / achievements in "responsibilities".
-4. "educations": Extract each degree, institution (e.g. "SIES Graduate School of Technology"), degree (e.g. "B.E."), field_of_study (including minors / specializations), and duration (e.g. "2021 – 2025").
-5. "projects": Extract all projects with their project_name, description (overview + key bullet points + tech stack), and link (if present in the text or links section).
-6. "certifications": Extract any certifications or awards with certification_name and issuer.
-7. "links": Extract all portfolio, GitHub, LinkedIn, LeetCode, and personal website links.
-
-Return ONLY a single valid JSON object strictly matching this schema with NO surrounding markdown backticks or commentary:
-{
-  "profile": {
-    "first_name": "string",
-    "last_name": "string",
-    "email": "string",
-    "phone": "string",
-    "location": "string",
-    "summary": "string"
-  },
-  "skills": ["string"],
-  "experiences": [
-    {
-      "company_name": "string",
-      "job_title": "string",
-      "duration": "string",
-      "responsibilities": "string"
-    }
-  ],
-  "educations": [
-    {
-      "institution": "string",
-      "degree": "string",
-      "field_of_study": "string",
-      "duration": "string"
-    }
-  ],
-  "projects": [
-    {
-      "project_name": "string",
-      "description": "string",
-      "link": "string"
-    }
-  ],
-  "certifications": [
-    {
-      "certification_name": "string",
-      "issuer": "string"
-    }
-  ],
-  "links": [
-    {
-      "url_type": "string",
-      "url": "string"
-    }
-  ]
-}`;
-
-      // Try reliable fast models first
-      const candidateModels = [
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.5-flash",
-        "gemini-flash-latest",
-        "gemini-flash-lite-latest",
-        "gemini-3.1-flash-lite",
-      ];
-
-      for (const model of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-          });
-
-          let jsonStr = response.text || "";
-          jsonStr = jsonStr.replace(/```(?:json)?\n?/g, "").trim();
-
-          const parsed = JSON.parse(jsonStr) as ParsedResumeData;
-          if (parsed && parsed.profile) {
-            return {
-              profile: {
-                first_name: parsed.profile.first_name || "",
-                last_name: parsed.profile.last_name || "",
-                email: parsed.profile.email || userEmail,
-                phone: parsed.profile.phone || "",
-                location: parsed.profile.location || "",
-                summary: parsed.profile.summary || "",
-              },
-              skills: Array.isArray(parsed.skills) ? parsed.skills.map((s) => String(s).trim()).filter(Boolean) : [],
-              experiences: Array.isArray(parsed.experiences)
-                ? parsed.experiences.map((exp) => ({
-                    company_name: exp.company_name || "",
-                    job_title: exp.job_title || "",
-                    duration: exp.duration || "",
-                    responsibilities: exp.responsibilities || "",
-                  }))
-                : [],
-              educations: Array.isArray(parsed.educations)
-                ? parsed.educations.map((edu) => ({
-                    institution: edu.institution || "",
-                    degree: edu.degree || "",
-                    field_of_study: edu.field_of_study || "",
-                    duration: edu.duration || "",
-                  }))
-                : [],
-              projects: Array.isArray(parsed.projects)
-                ? parsed.projects.map((proj) => ({
-                    project_name: proj.project_name || "",
-                    description: proj.description || "",
-                    link: proj.link || "",
-                  }))
-                : [],
-              certifications: Array.isArray(parsed.certifications)
-                ? parsed.certifications.map((cert) => ({
-                    certification_name: cert.certification_name || "",
-                    issuer: cert.issuer || "",
-                  }))
-                : [],
-              links: Array.isArray(parsed.links)
-                ? parsed.links.map((lnk) => ({
-                    url_type: lnk.url_type || "Website",
-                    url: lnk.url || "",
-                  }))
-                : [],
-            };
-          }
-        } catch (modelErr) {
-          console.warn(`Gemini model ${model} error:`, modelErr);
-        }
-      }
-    } catch (aiErr) {
-      console.warn("AI generation failed, falling back to heuristic parser:", aiErr);
-    }
-  }
-
-  // Fallback to Heuristic NLP parser
-  return heuristicResumeParser(rawText, userEmail);
+  const strict = await parseResumeStrict(rawText);
+  const validation = ResumeProfileValidator.validate(rawText, strict);
+  return convertStrictToLegacy(validation.verifiedData, userEmail);
 }

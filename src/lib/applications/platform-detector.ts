@@ -119,16 +119,35 @@ export async function detectApplicationPlatform(
 }
 
 /**
- * Enhance detection using DOM signals from a loaded Playwright page.
- * Call this after the browser has loaded the page.
+ * Enhance detection using DOM signals from a loaded page or provider.
+ * Supports both (provider, page, currentResult) and (page, currentResult).
  */
 export async function enhancePlatformDetectionFromPage(
-  page: any, // playwright Page
-  currentResult: PlatformDetectionResult
+  arg1: any,
+  arg2: any,
+  arg3?: any
 ): Promise<PlatformDetectionResult> {
+  let evaluate: <T = any, R = any>(fn: any, arg?: T) => Promise<R>;
+  let currentResult: PlatformDetectionResult;
+
+  if (arg3) {
+    // (provider, page, currentResult)
+    const provider = arg1;
+    const page = arg2;
+    currentResult = arg3;
+    evaluate = (fn, a) => (provider.evaluate ? provider.evaluate(page, fn, a) : (page.rawPage || page).evaluate(fn, a));
+  } else {
+    // (page, currentResult)
+    const page = arg1;
+    currentResult = arg2;
+    const rawPage = page?.rawPage || page;
+    evaluate = (fn, a) => rawPage.evaluate(fn, a);
+  }
+
   try {
     // Check for known platform DOM markers
-    const platformMarkers = await page.evaluate(() => {
+    const platformMarkers = await evaluate(() => {
+
       const markers: string[] = [];
 
       // Greenhouse markers
@@ -193,7 +212,7 @@ export async function enhancePlatformDetectionFromPage(
     }
 
     // Check meta tags
-    const metaPlatform = await page.evaluate(() => {
+    const metaPlatform = await evaluate(() => {
       const generator = document.querySelector('meta[name="generator"]')?.getAttribute("content") || "";
       const appMeta = document.querySelector('meta[name="application-name"]')?.getAttribute("content") || "";
       const combined = `${generator} ${appMeta}`.toLowerCase();
@@ -215,3 +234,9 @@ export async function enhancePlatformDetectionFromPage(
 
   return currentResult;
 }
+
+export const PlatformDetector = {
+  detect: detectApplicationPlatform,
+  enhanceFromPage: enhancePlatformDetectionFromPage,
+};
+

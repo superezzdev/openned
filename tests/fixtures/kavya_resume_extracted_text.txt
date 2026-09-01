@@ -1,0 +1,96 @@
+Kavya Gupta
+kavyagupta2719@gmail.com | LinkedIn | 8979617352
+EDUCATION
+UIETH PANJAB UNIVERSITY
+B.E. in Computer Science and Engineering
+CGPA - 8.31 | Nov. 2021 - July 2025
+ACHIEVEMENTS
+ACM-ICPC PRELIMS | 563 RANK
+• Led a team of 3 members and Successfully
+Achieved a Team Rank of 563 out of 2000+
+Teams.
+REPLY CHALLENGES 2023 | 199 GLOBAL
+• Led a team of 4 members and Successfully
+Achieved a Global Team Rank of 199 out of
+5000+ Teams.
+GOOGLE KICKSTART | 604 GLOBAL
+• Secured a Global Rank of 604 Among
+8000+ Participants.
+SPECIALIST @CODEFORCES | 1473
+• Ranked within the Top 6% of Competitive
+Programmers in India.
+• Placed among the Top 3,000 out of 55,000+
+users in India on CodeForces.
+SKILLS
+LANGUAGES
+| C | C++ | HTML | Javascript | SQL
+FRAMEWORKS
+| ReactJs | NodeJs | ExpressJS | MongoDB
+| TailwindCSS | Bootstrap
+SUBJECTS
+| Data Structures And Algorithms
+| Analysis and Design Of Algorithm
+| Operating Systems
+| Data Communication & Networks
+| Software Engineering
+| Object Oriented Programming
+EXTRAS
+| Git | Github | LINUX | Shell Scripting
+| Leadership | Problem-Solving | Teamwork
+LINKS
+| LinkedIn: // Kavya2719
+| Github: // Kavya2719
+| CodeForces: // Kavya2719
+| CodeChef: // kavya2719
+| LeetCode: // Kavya2719
+EXPERIENCE
+CISCO SYSTEMS | SWE Summer Intern’24
+Bangalore, India | June 2024 - July 2024
+• Enhanced Bugs Analytics Dashboard for FMC by adding a
+version 7.7.0 and version agnostic section, utilizing shell scripts,
+MySQL, and Metabase to automate data querying and
+visualization, resulting in improved bug tracking and management.
+• Consolidated Upgrade Scripts: Merged 2 seperate scripts for
+upgrading the FMC in Stand Alone and High Availability modes
+into a single, streamlined dual upgrade script, enhancing the control
+flow and updating test cases for new configurations.
+REWORK.AI | FullStack Developer (MERN)
+August 2023 - December 2023
+• Transformed 10+ Figma designs and also developed
+authorized-access Admin Dashboards facilitating analytical
+insights , and enabling flexible CRUD operations.[ Live Prototype ]
+PROJECTS
+SPEAKINDIA | Live (Beta Phase) | Github | MERN Stack
+April 2024 - May 2024
+• Developed an Event Management Platform for managing college
+debate events, empowering individuals to navigate
+conversations with clarity and conviction .
+• Defined and managed various user roles (admin, coadmin, expert,
+host, cohost, user) with corresponding interactive dashboards.
+• Incorporated comprehensive analytics and filters for event
+management, participant tracking, ratings, and reviews, enhancing
+user experience and event organization.
+• Implemented role application and approval workflows
+allowing users to apply for host and expert roles , and for admins
+to review and manage these applications.
+OS LAB SIMULATOR | Live | Github | MERN Stack
+Sept 2023 - Jan 2024
+• Developed an interactive simulator for visualizing CPU
+scheduling algorithms (FCFS, SJF, SRJF, Priority, RR) with
+step-by-step animated processes and comprehensive
+documentation and detailed Gantt charts, TAT & WT pie charts.
+• Enhanced educational impact by providing a user-friendly
+interface for simulating complex processes , aiding in the
+understanding as well as application of theoretical concepts.
+COCURRICULAR
+ALGOZENITH & GOOGLE DEVELOPER STUDENT CLUBS
+| Lead’23, ’24 & Co-Lead’22
+• Leading AZ & CoLeading GDSC PUSSGRC, overseeing a
+community of 200+ members , with a team of 10+ members.
+CODECHEF CHAPTER & ALGODERS COMMUNITY
+| Lead Mentor’22
+• Mentored & Guided 100+ Students in the domain of C, C++
+languages, and in Competitive Programming Domain.
+
+-- 1 of 1 --
+

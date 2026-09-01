@@ -37,8 +37,32 @@ export async function POST(req: NextRequest) {
       ? ApplicationStatus.MANUAL_APPLY_STARTED
       : ApplicationStatus.QUEUED;
 
-    // Idempotency: check if active application already exists for this user+job
+    // Normalize apply_url or resolve best apply_url from canonical_jobs
+    let targetApplyUrl = apply_url;
     const adminClient = getAdminClient();
+
+    if (job_id) {
+      const { data: canonicalJob } = await adminClient
+        .from("canonical_jobs")
+        .select("apply_url, job_url")
+        .eq("id", job_id)
+        .maybeSingle();
+
+      if (canonicalJob?.apply_url) {
+        targetApplyUrl = canonicalJob.apply_url;
+      }
+    }
+
+    // Normalize ATS application URLs if they point to the job description page
+    if (typeof targetApplyUrl === "string") {
+      if (/jobs\.ashbyhq\.com\/[^/]+\/[^/?#]+(?:\/)?$/i.test(targetApplyUrl)) {
+        targetApplyUrl = targetApplyUrl.replace(/\/$/, "") + "/application";
+      } else if (/jobs\.lever\.co\/[^/]+\/[^/?#]+(?:\/)?$/i.test(targetApplyUrl)) {
+        targetApplyUrl = targetApplyUrl.replace(/\/$/, "") + "/apply";
+      }
+    }
+
+    // Idempotency: check if active application already exists for this user+job
     const { data: existing } = await adminClient
       .from("applications")
       .select("id, status")
@@ -57,7 +81,7 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: user.id,
         job_id,
-        apply_url,
+        apply_url: targetApplyUrl,
         source: appSource,
         status: initialStatus,
         started_at: new Date().toISOString(),
@@ -106,7 +130,13 @@ export async function GET(req: NextRequest) {
     const adminClient = getAdminClient();
     let query = adminClient
       .from("applications")
-      .select("id, job_id, status, source, platform, apply_url, missing_fields, failure_code, error_message, created_at, updated_at")
+      .select(`
+        id, job_id, status, source, platform, apply_url, missing_fields,
+        failure_code, error_message, submitted_at, created_at, updated_at,
+        canonical_jobs (
+          title, company_name, company_logo, job_url
+        )
+      `)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(limit);

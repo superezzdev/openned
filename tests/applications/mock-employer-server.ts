@@ -217,14 +217,10 @@ export async function startMockEmployerServer(): Promise<MockEmployerServer> {
           <!DOCTYPE html>
           <html>
             <head><title>Disappearing Field Job</title></head>
+            <head><title>Vanishing Field Job</title></head>
             <body>
-              <h1>Application Form</h1>
-              <form action="/submit" method="POST">
-                <div id="wrapper">
-                  <label for="vanished_field">Mandatory Field *</label>
-                  <input type="text" id="vanished_field" name="vanished_field" required />
-                </div>
-                <button type="submit" id="submit-application">Submit</button>
+              <form id="application-form" action="/submit" method="POST">
+                <input type="text" id="vanished_field" name="vanished_field" required />
               </form>
               <script>
                 // Remove the field shortly after detection
@@ -233,6 +229,33 @@ export async function startMockEmployerServer(): Promise<MockEmployerServer> {
                   if (el) el.remove();
                 }, 300);
               </script>
+            </body>
+          </html>
+        `);
+        break;
+
+      case "/page-with-navbar-search":
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+            <head><title>LinkedIn Job - Frontend Software Engineer</title></head>
+            <body>
+              <header class="global-nav">
+                <input type="search" placeholder="Search job titles or companies" name="search_query" />
+                <input type="text" placeholder="Search skills, subjects, or software" name="skills_query" />
+                <input type="text" placeholder="Add a filter" name="filter_input" />
+                <input type="password" placeholder="Password" name="session_password" />
+              </header>
+              <main>
+                <div class="jobs-easy-apply-modal">
+                  <form id="application-form">
+                    <label for="first_name">First Name *</label>
+                    <input type="text" id="first_name" name="first_name" required />
+                    <label for="phone">Phone *</label>
+                    <input type="tel" id="phone" name="phone" required />
+                  </form>
+                </div>
+              </main>
             </body>
           </html>
         `);

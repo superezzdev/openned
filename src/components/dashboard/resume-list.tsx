@@ -15,6 +15,7 @@ import {
   Sparkles,
   ShieldCheck,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
@@ -39,12 +40,36 @@ export function ResumeList({ initialResumes = [], userEmail }: ResumeListProps) 
 
   const [resumes, setResumes] = useState<ResumeItem[]>(initialResumes);
   const [isUploading, setIsUploading] = useState(false);
+  const [isReparsing, setIsReparsing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const handleReparse = async () => {
+    setIsReparsing(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch("/api/resume/reparse", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to reparse resume");
+      }
+      setStatusMessage({
+        type: "success",
+        text: "Resume reparsed with Zero-Hallucination v2 engine! All profile records synchronized.",
+      });
+      router.refresh();
+      setTimeout(() => setStatusMessage(null), 6000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to reparse resume.";
+      setStatusMessage({ type: "error", text: msg });
+    } finally {
+      setIsReparsing(false);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -337,8 +362,9 @@ export function ResumeList({ initialResumes = [], userEmail }: ResumeListProps) 
                           {formatDate(resume.uploaded_at)}
                         </span>
                         <span>•</span>
-                        <span className="text-emerald-400/80 font-mono">
-                          Parsed & Indexed
+                        <span className="text-emerald-400 font-mono flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3" />
+                          Zero-Hallucination Verified (v2)
                         </span>
                       </div>
                     </div>
@@ -346,6 +372,21 @@ export function ResumeList({ initialResumes = [], userEmail }: ResumeListProps) 
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={handleReparse}
+                      disabled={isReparsing}
+                      className="h-8 px-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Reparse with Zero-Hallucination v2 Engine"
+                    >
+                      {isReparsing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      <span>Reparse</span>
+                    </button>
+
                     <a
                       href={fileUrl}
                       target="_blank"

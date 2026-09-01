@@ -110,6 +110,9 @@ export interface FieldMappingResult {
   status: FieldStatus;
 }
 
+export { AutomationProvider, AutomationPreference, FallbackReason } from "../automation/types";
+import type { AutomationProvider, AutomationPreference } from "../automation/types";
+
 // ---------------------------------------------------------------------------
 // Application Record (mirrors DB)
 // ---------------------------------------------------------------------------
@@ -124,6 +127,13 @@ export interface ApplicationRecord {
   platform_detection_method?: string | null;
   apply_url: string;
   browser_session_id?: string | null;
+  automation_provider?: AutomationProvider | string | null;
+  automation_preference?: AutomationPreference | string | null;
+  automation_attempts?: number;
+  fallback_used?: boolean;
+  fallback_reason?: string | null;
+  last_automation_error?: string | null;
+  browser_provider?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   submitted_at?: string | null;
@@ -138,6 +148,7 @@ export interface ApplicationRecord {
   created_at: string;
   updated_at: string;
 }
+
 
 // ---------------------------------------------------------------------------
 // Missing field info
@@ -156,6 +167,7 @@ export interface AutomationProfile {
   user_id: string;
   first_name?: string | null;
   last_name?: string | null;
+  full_name?: string | null;
   email?: string | null;
   phone?: string | null;
   location?: string | null;

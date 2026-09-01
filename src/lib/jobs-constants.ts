@@ -38,6 +38,7 @@ export interface JobRecord {
   tags: string[];
   match_score: number;
   job_url: string;
+  apply_url?: string | null;
   source_url?: string | null;
   applied_status: boolean;
   saved_status: boolean;

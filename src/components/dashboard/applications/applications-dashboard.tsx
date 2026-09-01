@@ -33,14 +33,32 @@ interface ApplicationRecord {
   error_message?: string;
   missing_fields?: MissingFieldInfo[];
   submitted_at?: string;
+  automation_provider?: string;
+  fallback_used?: boolean;
+  fallback_reason?: string;
+  browser_session_id?: string;
   created_at: string;
   updated_at: string;
-  canonical_jobs?: {
-    title?: string;
-    company_name?: string;
-    company_logo?: string;
-    job_url?: string;
-  };
+  canonical_jobs?:
+    | {
+        title?: string;
+        company_name?: string;
+        company_logo?: string;
+        job_url?: string;
+      }
+    | Array<{
+        title?: string;
+        company_name?: string;
+        company_logo?: string;
+        job_url?: string;
+      }>;
+}
+
+export function resolveCanonicalJob(canonical_jobs: any) {
+  if (Array.isArray(canonical_jobs)) {
+    return canonical_jobs[0] || null;
+  }
+  return canonical_jobs || null;
 }
 
 type StatusFilter = "all" | "active" | "pending" | "submitted" | "failed";
@@ -73,7 +91,21 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
       const res = await fetch("/api/applications", { cache: "no-store" });
       if (res.ok) {
         const { applications: fresh } = await res.json();
-        if (fresh) setApplications(fresh);
+        if (fresh && Array.isArray(fresh)) {
+          setApplications(prev => {
+            const prevMap = new Map(prev.map(a => [a.id, a]));
+            return fresh.map((f: ApplicationRecord) => {
+              const old = prevMap.get(f.id);
+              return {
+                ...f,
+                canonical_jobs: f.canonical_jobs || old?.canonical_jobs,
+              };
+            });
+          });
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("applications-updated"));
+          }
+        }
       }
     } catch {}
   }, []);
@@ -214,8 +246,8 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
           open={!!missingFieldsApp}
           onOpenChange={(open) => !open && setMissingFieldsApp(null)}
           applicationId={missingFieldsApp.id}
-          jobTitle={missingFieldsApp.canonical_jobs?.title || "this job"}
-          companyName={missingFieldsApp.canonical_jobs?.company_name || "this company"}
+          jobTitle={resolveCanonicalJob(missingFieldsApp.canonical_jobs)?.title || "this job"}
+          companyName={resolveCanonicalJob(missingFieldsApp.canonical_jobs)?.company_name || "this company"}
           missingFields={missingFieldsApp.missing_fields || []}
           onSuccess={async () => {
             setMissingFieldsApp(null);
@@ -230,8 +262,8 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
           open={!!reviewApp}
           onOpenChange={(open) => !open && setReviewApp(null)}
           applicationId={reviewApp.id}
-          jobTitle={reviewApp.canonical_jobs?.title || "this job"}
-          companyName={reviewApp.canonical_jobs?.company_name || "this company"}
+          jobTitle={resolveCanonicalJob(reviewApp.canonical_jobs)?.title || "this job"}
+          companyName={resolveCanonicalJob(reviewApp.canonical_jobs)?.company_name || "this company"}
           platform={reviewApp.platform}
           fields={[]}
           onConfirm={async () => {
@@ -260,10 +292,11 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
   const isPaused = PAUSED_APPLICATION_STATUSES.includes(status);
   const isFailed = status === ApplicationStatus.FAILED;
 
-  const jobTitle = app.canonical_jobs?.title || "Unknown Job";
-  const companyName = app.canonical_jobs?.company_name || "Unknown Company";
-  const companyLogo = app.canonical_jobs?.company_logo;
-  const jobUrl = app.canonical_jobs?.job_url || app.apply_url;
+  const canonicalJob = resolveCanonicalJob(app.canonical_jobs);
+  const jobTitle = canonicalJob?.title || "Unknown Job";
+  const companyName = canonicalJob?.company_name || "Unknown Company";
+  const companyLogo = canonicalJob?.company_logo;
+  const jobUrl = canonicalJob?.job_url || app.apply_url;
 
   const createdAt = new Date(app.created_at);
   const timeAgo = formatTimeAgo(createdAt);
@@ -293,6 +326,36 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
                   <span className="text-[10px] text-white/30 font-mono">· {app.platform}</span>
                 )}
                 <span className="text-[10px] text-white/25">· {timeAgo}</span>
+              </div>
+
+              {/* Provider & Fallback Badge */}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {app.fallback_used ? (
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                    <Zap className="w-2.5 h-2.5 text-violet-400" />
+                    <span>Local Browser → Browserbase</span>
+                    {app.fallback_reason && (
+                      <span className="text-white/40">({app.fallback_reason.toLowerCase().replace(/_/g, " ")})</span>
+                    )}
+                  </div>
+                ) : app.automation_provider === "BROWSERBASE" ? (
+                  <div className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-medium text-violet-300/80">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                    Browserbase Cloud
+                  </div>
+                ) : null}
+
+                {app.browser_session_id && (
+                  <a
+                    href={`https://browserbase.com/sessions/${app.browser_session_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] text-white/40 hover:text-violet-300 transition-colors"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Session Replay
+                  </a>
+                )}
               </div>
             </div>
 

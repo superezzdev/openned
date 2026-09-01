@@ -781,6 +781,7 @@ export async function fetchCachedOrFreshJobs(
         tags: metadata.tags,
         match_score: score,
         job_url: cj.job_url,
+        apply_url: cj.apply_url || cj.job_url,
         source_url: cj.apply_url || cj.job_url,
         applied_status: interaction ? interaction.applied_status : false,
         saved_status: interaction ? interaction.saved_status : false,

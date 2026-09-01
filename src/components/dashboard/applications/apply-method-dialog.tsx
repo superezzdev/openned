@@ -59,6 +59,9 @@ export function ApplyMethodDialog({
       window.open(applyUrl, "_blank", "noopener,noreferrer");
 
       onApplicationCreated?.(application.id, ApplicationStatus.MANUAL_APPLY_STARTED);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("applications-updated"));
+      }
       onOpenChange(false);
       setState("idle");
     } catch (err: any) {
@@ -107,6 +110,9 @@ export function ApplyMethodDialog({
 
       setState("success");
       onApplicationCreated?.(application.id, ApplicationStatus.QUEUED);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("applications-updated"));
+      }
 
       // Auto-close after showing success
       setTimeout(() => {

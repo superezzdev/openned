@@ -607,6 +607,31 @@ describe("Full AI Job Application Automation Flow & Hardening Suite", () => {
       expect(lockAfter).toBeTruthy();
       await releaseApplicationLock(appId, lockAfter!);
     });
+
+    // 15. Form Detection Filters Out Search Bar and Password Inputs
+    it("Failure Case 15: Excludes navbar search, filter, and password inputs from detected application fields", async () => {
+      const page = await browser.newPage();
+      await page.goto(`${mockServer.baseUrl}/page-with-navbar-search`);
+      const fields = await detectApplicationFields(page);
+
+      // Verify that none of the navbar inputs were captured
+      const searchJobs = fields.find(f => f.label.toLowerCase().includes("job titles") || f.field_id.includes("search_query"));
+      const searchSkills = fields.find(f => f.label.toLowerCase().includes("skills") || f.field_id.includes("skills_query"));
+      const filterInput = fields.find(f => f.label.toLowerCase().includes("filter") || f.field_id.includes("filter_input"));
+      const passwordInput = fields.find(f => f.label.toLowerCase().includes("password") || f.field_id.includes("session_password"));
+
+      expect(searchJobs).toBeUndefined();
+      expect(searchSkills).toBeUndefined();
+      expect(filterInput).toBeUndefined();
+      expect(passwordInput).toBeUndefined();
+
+      // Only actual form fields inside the application form/modal should be detected
+      expect(fields.length).toBe(2);
+      expect(fields.some(f => f.field_id === "first_name")).toBe(true);
+      expect(fields.some(f => f.field_id === "phone")).toBe(true);
+
+      await page.close();
+    });
   });
 
   // ===========================================================================

@@ -47,57 +47,88 @@ export async function POST(
       return NextResponse.json({ error: "Application not found" }, { status: 404 });
     }
 
-    if (application.status !== ApplicationStatus.MISSING_PROFILE_INFO &&
-        application.status !== ApplicationStatus.AWAITING_USER_INPUT) {
+    const allowedStatuses = [
+      ApplicationStatus.MISSING_PROFILE_INFO,
+      ApplicationStatus.AWAITING_USER_INPUT,
+      ApplicationStatus.AWAITING_USER_REVIEW,
+      ApplicationStatus.READY_TO_APPLY,
+    ];
+
+    if (!allowedStatuses.includes(application.status as ApplicationStatus)) {
       return NextResponse.json({
-        error: `Application is not waiting for missing fields (status: ${application.status})`,
+        error: `Application is not in a valid state for missing fields (status: ${application.status})`,
       }, { status: 400 });
     }
 
-    // 1. Save values to user profile (makes them reusable)
+    // 1. Save values to user profile (makes them reusable across applications)
     await updateProfileWithMissingFields(user.id, values);
 
-    // 2. Determine which missing fields are now resolved
-    const currentMissing: any[] = application.missing_fields || [];
-    const providedKeys = new Set(Object.keys(values).filter(k => values[k]?.trim()));
-    const remainingMissing = currentMissing.filter(
-      (f: any) => !providedKeys.has(f.field_key)
-    );
+    // 2. Resolve form schema ID if not explicitly on application row
+    let formSchemaId = application.form_schema_id;
+    if (!formSchemaId) {
+      const { data: form } = await adminClient
+        .from("application_forms")
+        .select("id")
+        .eq("application_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (form?.id) {
+        formSchemaId = form.id;
+      }
+    }
 
-    // 3. Update application record — clear resolved missing fields
-    await adminClient.from("applications").update({
-      missing_fields: remainingMissing,
-      status: ApplicationStatus.QUEUED, // Reset to QUEUED so worker can pick up
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
-
-    // 4. Update application_form_fields mappings if form schema exists
-    if (application.form_schema_id) {
+    // 3. Update application_form_fields with user values
+    if (formSchemaId) {
       for (const [key, rawValue] of Object.entries(values)) {
         const valStr = typeof rawValue === "string" ? rawValue.trim() : String(rawValue ?? "").trim();
         if (!valStr) continue;
         await adminClient
           .from("application_form_fields")
           .update({ current_value: valStr, status: "MAPPED" })
-          .eq("application_form_id", application.form_schema_id)
+          .eq("application_form_id", formSchemaId)
           .or(`mapped_profile_key.eq.${key},field_key.eq.${key}`);
       }
     }
 
-    // 5. Resume automation via Inngest
-    await inngest.send({
-      name: "application/resume",
-      data: {
-        application_id: id,
-        user_id: user.id,
-        reason: "missing_fields_filled",
-      },
-    });
+    // 4. Determine which missing fields are now resolved
+    const currentMissing: any[] = application.missing_fields || [];
+    const providedKeys = new Set(Object.keys(values).filter(k => values[k]?.trim()));
+    const remainingMissing = currentMissing.filter(
+      (f: any) => !providedKeys.has(f.field_key) && !providedKeys.has(f.label)
+    );
+
+    const isReview = application.status === ApplicationStatus.AWAITING_USER_REVIEW;
+
+    // 5. Update application record — clear resolved missing fields
+    const nextStatus = isReview ? ApplicationStatus.AWAITING_USER_REVIEW : ApplicationStatus.QUEUED;
+    await adminClient.from("applications").update({
+      missing_fields: remainingMissing,
+      status: nextStatus,
+      form_schema_id: formSchemaId || application.form_schema_id,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+
+    // 6. Resume automation via Inngest if paused waiting for input
+    if (!isReview) {
+      await inngest.send({
+        name: "application/resume",
+        data: {
+          application_id: id,
+          user_id: user.id,
+          reason: "missing_fields_filled",
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
       remaining_missing: remainingMissing.length,
-      message: "Profile updated and application is resuming.",
+      remaining_fields: remainingMissing,
+      status: nextStatus,
+      message: isReview
+        ? "Information saved. Your application is ready for review."
+        : "Profile updated and application is resuming.",
     });
   } catch (err: any) {
     console.error("[POST /api/applications/:id/missing-fields]", err);

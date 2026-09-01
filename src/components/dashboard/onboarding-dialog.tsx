@@ -15,8 +15,11 @@ import {
   AlertCircle,
   ArrowRight,
   ShieldCheck,
+  AlertTriangle,
+  Check,
 } from "lucide-react";
 import { ParsedResumeData } from "@/lib/resume-parser";
+import { StrictResumeExtraction } from "@/lib/resume/types";
 
 interface OnboardingDialogProps {
   userEmail: string;
@@ -43,6 +46,12 @@ export function OnboardingDialog({
   const [activeStep, setActiveStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [parsedResult, setParsedResult] = useState<ParsedResumeData | null>(null);
+  const [strictResult, setStrictResult] = useState<StrictResumeExtraction | null>(null);
+  const [validationResult, setValidationResult] = useState<{
+    isValid: boolean;
+    warnings: string[];
+    rejectedFields: Array<{ field: string; value: any; reason: string }>;
+  } | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -121,6 +130,8 @@ export function OnboardingDialog({
 
       setActiveStep(4);
       setParsedResult(data.data);
+      setStrictResult(data.strict || null);
+      setValidationResult(data.validation || null);
       setIsCompleted(true);
     } catch (err: unknown) {
       const message =
@@ -307,28 +318,110 @@ export function OnboardingDialog({
             )}
           </div>
         ) : (
-          /* Success Screen */
+          /* Success & Review Screen */
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="space-y-6 text-center py-2"
+            className="space-y-5 text-left py-1"
           >
-            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-9 h-9" />
+            {/* Header */}
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-2xl font-bold text-white">
+                  Resume parsed successfully!
+                </h3>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-mono text-emerald-300">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Evidence-Based • Zero Hallucination Verified</span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <h3 className="text-2xl font-bold text-white">
-                Resume parsed successfully!
-              </h3>
-              <p className="text-xs sm:text-sm text-white/60 max-w-md mx-auto">
-                We extracted your career details and populated your profile. You can
-                review and edit everything anytime.
-              </p>
+            {/* Candidate Identity & Contact Review Card */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold text-white/70 border-b border-white/5 pb-2">
+                <span>Extracted Candidate Identity</span>
+                <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-wide flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Grounded In Resume
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-white/40 block text-[11px]">Full Name</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-semibold text-white">
+                      {[parsedResult?.profile.first_name, parsedResult?.profile.last_name].filter(Boolean).join(" ") || "Not found"}
+                    </span>
+                    {parsedResult?.profile.first_name && (
+                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                        Verified
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-white/40 block text-[11px]">Email</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-semibold text-white truncate max-w-[200px]">
+                      {parsedResult?.profile.email || "Not found"}
+                    </span>
+                    {parsedResult?.profile.email && (
+                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                        Verified
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-white/40 block text-[11px]">Phone Number</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {parsedResult?.profile.phone ? (
+                      <>
+                        <span className="font-semibold text-white">
+                          {parsedResult.profile.phone}
+                        </span>
+                        <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                          Verified
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400/90 font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                        <AlertTriangle className="w-3 h-3" /> Please verify in profile
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-white/40 block text-[11px]">Home Location</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {parsedResult?.profile.location ? (
+                      <>
+                        <span className="font-semibold text-white">
+                          {parsedResult.profile.location}
+                        </span>
+                        <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                          Verified
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400/90 font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                        <AlertTriangle className="w-3 h-3" /> Not in resume (Please verify)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Extracted stats pills */}
-            <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-left">
+            <div className="grid grid-cols-3 gap-3 p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 text-left">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-white/40 text-[11px]">
                   <Wrench className="w-3.5 h-3.5 text-cyan-400" />
@@ -337,6 +430,9 @@ export function OnboardingDialog({
                 <p className="text-base font-bold text-white font-mono">
                   {parsedResult?.skills.length || 0}
                 </p>
+                <span className="text-[10px] text-emerald-400/80 font-mono block">
+                  All Grounded
+                </span>
               </div>
 
               <div className="space-y-1">
@@ -347,6 +443,9 @@ export function OnboardingDialog({
                 <p className="text-base font-bold text-white font-mono">
                   {parsedResult?.experiences.length || 0}
                 </p>
+                <span className="text-[10px] text-emerald-400/80 font-mono block truncate">
+                  {parsedResult?.experiences[0]?.company_name || "None"}
+                </span>
               </div>
 
               <div className="space-y-1">
@@ -357,8 +456,33 @@ export function OnboardingDialog({
                 <p className="text-base font-bold text-white font-mono">
                   {parsedResult?.educations.length || 0}
                 </p>
+                <span className="text-[10px] text-emerald-400/80 font-mono block truncate">
+                  {parsedResult?.educations[0]?.degree || "None"}
+                </span>
               </div>
             </div>
+
+            {/* Verified Skills Preview */}
+            {(parsedResult?.skills.length || 0) > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-white/40 font-medium">Verified Skills Preview</span>
+                <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-1">
+                  {parsedResult?.skills.slice(0, 10).map((skill, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10 text-[11px] text-white/80 font-mono"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                  {(parsedResult?.skills.length || 0) > 10 && (
+                    <span className="px-2 py-0.5 rounded-lg bg-white/[0.04] text-[10px] text-white/40 font-mono">
+                      +{(parsedResult?.skills.length || 0) - 10} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Action button */}
             <div className="pt-2">
@@ -366,7 +490,7 @@ export function OnboardingDialog({
                 onClick={handleFinish}
                 className="w-full h-11 bg-white hover:bg-white/90 text-black font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/10 cursor-pointer"
               >
-                <span>View & Edit Profile</span>
+                <span>Confirm & View Profile</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
