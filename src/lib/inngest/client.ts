@@ -7,9 +7,13 @@
 
 import { Inngest } from "inngest";
 
+const isDev = process.env.NODE_ENV === "development" || !process.env.INNGEST_EVENT_KEY;
+
 export const inngest = new Inngest({
   id: "openned-app",
   name: "Openned Job Application Tracker",
+  isDev,
+  eventKey: process.env.INNGEST_EVENT_KEY || (isDev ? "local" : undefined),
 });
 
 // Event types
