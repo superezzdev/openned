@@ -137,6 +137,26 @@ export function JobsDashboard({
     }
   };
 
+  // Optimistic Not Relevant / Hide Toggle
+  const handleNotRelevant = async (jobId: string) => {
+    // Optimistically remove from visible jobs list
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+
+    try {
+      await fetch("/api/jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          not_relevant: true,
+          hidden: true,
+        }),
+      });
+    } catch (err) {
+      console.error("Error updating not relevant status:", err);
+    }
+  };
+
   const handleSelectPlatform = async (platform: string) => {
     setSelectedPlatform(platform);
     if (platform !== "all") {
@@ -242,6 +262,7 @@ export function JobsDashboard({
             onClearFilters={handleClearFilters}
             onToggleSave={handleToggleSave}
             onToggleApplied={handleToggleApplied}
+            onNotRelevant={handleNotRelevant}
           />
         </div>
 

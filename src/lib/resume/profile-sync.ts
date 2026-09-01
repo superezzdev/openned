@@ -209,8 +209,17 @@ export async function stageAndSyncResumeProfile(
     profileUpdates.portfolio_url = verified.links.portfolio.url;
   }
 
+  // Increment profile version to invalidate stale cached job matches
+  const nextProfileVersion = (existingProfile?.profile_version || 1) + 1;
+  profileUpdates.profile_version = nextProfileVersion;
+
   // Execute profile update
   await supabase.from("profiles").update(profileUpdates).eq("id", profileId);
+
+  // Invalidate old job matches for this user when profile version changes
+  if (existingProfile?.user_id) {
+    await supabase.from("job_matches").delete().eq("user_id", existingProfile.user_id);
+  }
 
   // 5. Clean up old hallucinated / stale child collections
   await Promise.all([
