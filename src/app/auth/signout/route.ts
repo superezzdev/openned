@@ -14,7 +14,25 @@ export async function POST(req: NextRequest) {
   }
 
   revalidatePath("/", "layout");
-  return NextResponse.redirect(new URL("/signin", req.url), {
+  return NextResponse.redirect(new URL("/", req.url), {
+    status: 303,
+  });
+}
+
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    await supabase.auth.signOut();
+  }
+
+  revalidatePath("/", "layout");
+  return NextResponse.redirect(new URL("/", req.url), {
     status: 302,
   });
 }
+
