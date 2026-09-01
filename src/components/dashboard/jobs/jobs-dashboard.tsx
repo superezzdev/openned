@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { JobRecord } from "@/lib/jobs-service";
+import type { JobRecord } from "@/lib/jobs-constants";
 import { ProfileCompletenessResult } from "@/lib/profile-utils";
+
 import { JobsWelcomeBanner } from "./jobs-welcome-banner";
 import { PlatformSelector } from "./platform-selector";
 import { JobList } from "./job-list";

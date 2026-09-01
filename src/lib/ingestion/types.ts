@@ -1,8 +1,34 @@
-export type JobSource = "greenhouse" | "lever" | "ashby" | "workable" | "wellfound" | "smartrecruiters" | "ycombinator" | "adzuna" | "custom";
+export type JobSource =
+  | "greenhouse"
+  | "lever"
+  | "ashby"
+  | "workable"
+  | "wellfound"
+  | "smartrecruiters"
+  | "ycombinator"
+  | "adzuna"
+  | "jsearch"
+  | "active-jobs-db"
+  | "linkedin"
+  | "linkedin-jobs"
+  | "glassdoor"
+  | "job-posting-feed"
+  | "jobicy"
+  | "remote-jobs"
+  | "workday"
+  | "google-jobs"
+  | "free-yc-jobs"
+  | "internships"
+  | "indeed"
+  | "freelancer"
+  | "salary-enricher"
+  | "custom"
+  | (string & {});
 
 export type RemoteType = "remote" | "hybrid" | "onsite";
 export type EmploymentType = "full-time" | "part-time" | "contract" | "internship";
 export type SalaryInterval = "yearly" | "monthly" | "hourly";
+
 
 export interface JobSourceRecord {
   id: string;

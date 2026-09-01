@@ -23,8 +23,10 @@ import {
 } from "lucide-react";
 import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { ProfileCompletenessResult, CompletenessItem } from "@/lib/profile-utils";
-import { JobRecord } from "@/lib/jobs-service";
+import type { JobRecord } from "@/lib/jobs-constants";
 import { cn } from "@/lib/utils";
+
+
 
 export interface ActivityItem {
   id: string;

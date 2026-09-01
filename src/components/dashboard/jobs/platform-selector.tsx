@@ -4,6 +4,8 @@ import React from "react";
 import Image from "next/image";
 import { Check, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SUPPORTED_PLATFORMS } from "@/lib/jobs-constants";
+
 
 export interface PlatformItem {
   id: string;
@@ -28,120 +30,44 @@ export function PlatformSelector({
   onSelectPlatform,
   counts,
 }: PlatformSelectorProps) {
-  const platforms: PlatformItem[] = [
+  const allPlatforms: PlatformItem[] = [
     {
       id: "all",
       name: "All Platforms",
-      domain: "Cross-platform feed",
+      domain: "Cross-platform unified feed",
       count: counts.all || 0,
       badgeClass: "bg-white/10 text-white border-white/20",
       activeColor: "text-white",
       activeBorder: "border-white/50 shadow-white/5",
       activeBg: "bg-white/[0.08]",
     },
-    {
-      id: "greenhouse",
-      name: "Greenhouse",
-      domain: "boards.greenhouse.io",
-      count: counts.greenhouse || 0,
-      badgeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-      activeColor: "text-emerald-400",
-      activeBorder: "border-emerald-500/50 shadow-emerald-500/10",
-      activeBg: "bg-emerald-950/25",
-      logoSrc: "/platforms/Greenhouse.png",
-    },
-    {
-      id: "lever",
-      name: "Lever",
-      domain: "jobs.lever.co",
-      count: counts.lever || 0,
-      badgeClass: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
-      activeColor: "text-indigo-400",
-      activeBorder: "border-indigo-500/50 shadow-indigo-500/10",
-      activeBg: "bg-indigo-950/25",
-      logoSrc: "/platforms/Lever.png",
-    },
-    {
-      id: "ashby",
-      name: "Ashby",
-      domain: "jobs.ashbyhq.com",
-      count: counts.ashby || 0,
-      badgeClass: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-      activeColor: "text-purple-400",
-      activeBorder: "border-purple-500/50 shadow-purple-500/10",
-      activeBg: "bg-purple-950/25",
-      logoSrc: "/platforms/Ashby.png",
-    },
-    {
-      id: "workable",
-      name: "Workable",
-      domain: "apply.workable.com",
-      count: counts.workable || 0,
-      badgeClass: "bg-teal-500/15 text-teal-400 border-teal-500/30",
-      activeColor: "text-teal-400",
-      activeBorder: "border-teal-500/50 shadow-teal-500/10",
-      activeBg: "bg-teal-950/25",
-      logoSrc: "/platforms/Workable.png",
-    },
-    {
-      id: "wellfound",
-      name: "Wellfound",
-      domain: "wellfound.com/jobs",
-      count: counts.wellfound || 0,
-      badgeClass: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-      activeColor: "text-amber-400",
-      activeBorder: "border-amber-500/50 shadow-amber-500/10",
-      activeBg: "bg-amber-950/25",
-      logoSrc: "/platforms/wellfound.png",
-    },
-    {
-      id: "smartrecruiters",
-      name: "SmartRecruiters",
-      domain: "jobs.smartrecruiters.com",
-      count: counts.smartrecruiters || 0,
-      badgeClass: "bg-sky-500/15 text-sky-400 border-sky-500/30",
-      activeColor: "text-sky-400",
-      activeBorder: "border-sky-500/50 shadow-sky-500/10",
-      activeBg: "bg-sky-950/25",
-      logoSrc: "/platforms/SmartRecruiters.png",
-    },
-    {
-      id: "ycombinator",
-      name: "Y Combinator",
-      domain: "ycombinator.com/jobs",
-      count: counts.ycombinator || 0,
-      badgeClass: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-      activeColor: "text-orange-400",
-      activeBorder: "border-orange-500/50 shadow-orange-500/10",
-      activeBg: "bg-orange-950/25",
-      logoSrc: "/platforms/ycombinator.svg",
-    },
-    {
-      id: "adzuna",
-      name: "Adzuna",
-      domain: "adzuna.in / adzuna.com",
-      count: counts.adzuna || 0,
-      badgeClass: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-      activeColor: "text-blue-400",
-      activeBorder: "border-blue-500/50 shadow-blue-500/10",
-      activeBg: "bg-blue-950/25",
-      logoSrc: "/platforms/adzuna.svg",
-    },
+    ...SUPPORTED_PLATFORMS.map((p) => ({
+      id: p.id,
+      name: p.name,
+      domain: p.domain,
+      count: counts[p.id] || counts[p.id.replace("-", "_")] || 0,
+      badgeClass: p.badgeClass,
+      activeColor: p.badgeClass.split(" ")[1] || "text-white",
+      activeBorder: `${p.badgeClass.split(" ")[2]} shadow-lg`,
+      activeBg: `${p.badgeClass.split(" ")[0]} backdrop-blur-md`,
+      logoSrc: p.logoSrc,
+    })),
   ];
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-mono uppercase tracking-wider text-white/50 flex items-center gap-2">
-          <span>Target Job Platforms</span>
+          <span>Target Job Platforms ({allPlatforms.length - 1})</span>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
         </h2>
-        <span className="text-xs text-white/40">Select platform to filter</span>
+        <span className="text-xs text-white/40">Select platform to filter & search</span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-3">
-        {platforms.map((p) => {
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-9 gap-3">
+        {allPlatforms.map((p) => {
           const isSelected = selectedPlatform === p.id;
+
 
           return (
             <button

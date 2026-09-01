@@ -16,11 +16,29 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const force = searchParams.get("force") === "true";
     const platform = searchParams.get("platform") || undefined;
+    const query = searchParams.get("q") || searchParams.get("query") || undefined;
+    const location = searchParams.get("location") || undefined;
+    const country = searchParams.get("country") || undefined;
+    const jobType = searchParams.get("jobType") || searchParams.get("job_type") || undefined;
+    const remoteType = searchParams.get("remoteType") || searchParams.get("remote_type") || undefined;
+    const experienceLevel = searchParams.get("experienceLevel") || searchParams.get("experience_level") || undefined;
+    const salaryMinParam = searchParams.get("salaryMin") || searchParams.get("salary_min");
+    const salaryMin = salaryMinParam ? parseInt(salaryMinParam, 10) : undefined;
+    const datePosted = searchParams.get("datePosted") || searchParams.get("date_posted") || undefined;
 
     const result = await fetchCachedOrFreshJobs(user.id, {
       forceRefresh: force,
       platform,
+      query,
+      location,
+      country,
+      jobType,
+      remoteType,
+      experienceLevel,
+      salaryMin: !isNaN(salaryMin as number) ? salaryMin : undefined,
+      datePosted,
     });
+
 
     return NextResponse.json({
       success: true,
