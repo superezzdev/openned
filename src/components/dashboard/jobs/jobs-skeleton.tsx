@@ -61,36 +61,55 @@ export function JobsSkeleton() {
             </div>
           </div>
 
-          {/* Job Card Skeletons */}
-          {[1, 2, 3].map((i) => (
+          {/* Job Card Listing Skeletons */}
+          {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="p-5 sm:p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4"
+              className="p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border border-white/10 bg-[#111113]/80"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <Skeleton className="w-12 h-12 rounded-xl bg-white/10 shrink-0" />
-                  <div className="space-y-1.5">
-                    <Skeleton className="h-5 w-48 sm:w-64 bg-white/10 rounded-md" />
-                    <Skeleton className="h-4 w-32 bg-white/5 rounded-md" />
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                {/* Left + Middle */}
+                <div className="flex items-start gap-4 min-w-0 flex-1">
+                  <Skeleton className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/10 shrink-0" />
+                  <div className="space-y-2.5 min-w-0 flex-1">
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-5 w-48 sm:w-64 bg-white/10 rounded-md" />
+                      <div className="flex items-center gap-2">
+                        <Skeleton className="h-4 w-28 bg-white/5 rounded-md" />
+                        <Skeleton className="h-4 w-16 bg-white/5 rounded-full" />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Skeleton className="h-3.5 w-16 bg-white/5 rounded-md" />
+                      <Skeleton className="h-3.5 w-24 bg-white/5 rounded-md" />
+                      <Skeleton className="h-3.5 w-20 bg-white/5 rounded-md" />
+                      <Skeleton className="h-3.5 w-24 bg-white/5 rounded-md" />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <Skeleton className="h-5 w-24 bg-white/5 rounded-lg" />
+                      <Skeleton className="h-5 w-20 bg-white/5 rounded-lg" />
+                      <Skeleton className="h-5 w-16 bg-white/5 rounded-lg" />
+                    </div>
                   </div>
                 </div>
-                <Skeleton className="h-7 w-20 bg-emerald-500/15 rounded-full shrink-0" />
-              </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Skeleton className="h-6 w-20 bg-white/5 rounded-md" />
-                <Skeleton className="h-6 w-24 bg-white/5 rounded-md" />
-                <Skeleton className="h-6 w-28 bg-white/5 rounded-md" />
-              </div>
+                {/* Right: Match + Buttons */}
+                <div className="flex items-center justify-between lg:justify-end gap-5 pt-3 lg:pt-0 border-t lg:border-t-0 border-white/5 shrink-0">
+                  <div className="space-y-1.5 min-w-[120px]">
+                    <Skeleton className="h-5 w-20 bg-white/10 rounded-md" />
+                    <Skeleton className="h-1.5 w-28 sm:w-32 bg-white/10 rounded-full" />
+                    <div className="space-y-1">
+                      <Skeleton className="h-3 w-20 bg-emerald-500/20 rounded-md" />
+                      <Skeleton className="h-2.5 w-16 bg-white/5 rounded-md" />
+                    </div>
+                  </div>
 
-              <Skeleton className="h-2 w-full bg-white/10 rounded-full" />
-
-              <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                <Skeleton className="h-4 w-36 bg-white/5 rounded-md" />
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-9 w-9 bg-white/10 rounded-xl" />
-                  <Skeleton className="h-9 w-28 bg-white/10 rounded-xl" />
+                  <div className="flex flex-col gap-2 shrink-0 min-w-[100px]">
+                    <Skeleton className="h-9 sm:h-10 w-full bg-indigo-600/30 rounded-xl" />
+                    <Skeleton className="h-8 sm:h-9 w-full bg-white/5 rounded-xl" />
+                  </div>
                 </div>
               </div>
             </div>

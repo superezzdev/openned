@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { JobRecord, ActiveJobFilters } from "@/lib/jobs-constants";
 import { JobCard } from "./job-card";
 import { JobsFilterBar } from "./jobs-filter-bar";
+import { ApplicationStatus } from "@/lib/applications/types";
 
 interface JobListProps {
   jobs: JobRecord[];
@@ -52,6 +53,26 @@ export function JobList({
   const [sortBy, setSortBy] = useState<SortOption>("match_desc");
   const [filters, setFilters] = useState<ActiveJobFilters>(INITIAL_FILTERS);
   const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+  const [applicationMap, setApplicationMap] = useState<Record<string, { id: string; status: ApplicationStatus }>>({});
+
+  // Fetch applications for visible jobs
+  useEffect(() => {
+    const jobIds = jobs.map((j) => j.id).filter(Boolean);
+    if (jobIds.length === 0) return;
+
+    fetch(`/api/applications?jobIds=${jobIds.slice(0, 100).join(",")}`)
+      .then((res) => (res.ok ? res.json() : { applications: [] }))
+      .then((data) => {
+        if (data.applications) {
+          const map: Record<string, { id: string; status: ApplicationStatus }> = {};
+          for (const app of data.applications) {
+            map[app.job_id] = { id: app.id, status: app.status as ApplicationStatus };
+          }
+          setApplicationMap(map);
+        }
+      })
+      .catch(() => {});
+  }, [jobs]);
 
   // Reset pagination when filter criteria change
   useEffect(() => {
@@ -466,6 +487,7 @@ export function JobList({
               job={job}
               onToggleSave={onToggleSave}
               onToggleApplied={onToggleApplied}
+              application={applicationMap[job.id] || null}
             />
           ))}
 

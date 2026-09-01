@@ -1,34 +1,85 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import {
-  ExternalLink,
   Bookmark,
-  BookmarkCheck,
   MapPin,
   DollarSign,
   Briefcase,
-  Layers,
-  Sparkles,
+  Wifi,
   CheckCircle,
-  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { JobRecord } from "@/lib/jobs-constants";
+import { ApplyMethodDialog } from "@/components/dashboard/applications/apply-method-dialog";
+import { ApplicationStatusCard } from "@/components/dashboard/applications/application-status-card";
+import { MissingProfileFieldsDialog } from "@/components/dashboard/applications/missing-profile-fields-dialog";
+import { ApplicationReviewDialog } from "@/components/dashboard/applications/application-review-dialog";
+import { ApplicationStatus, MissingFieldInfo } from "@/lib/applications/types";
 
+interface ApplicationSummary {
+  id: string;
+  status: ApplicationStatus;
+}
 
 interface JobCardProps {
   job: JobRecord;
   onToggleSave: (jobId: string, currentSaved: boolean) => Promise<void>;
   onToggleApplied: (jobId: string, currentApplied: boolean) => Promise<void>;
+  application?: ApplicationSummary | null;
 }
 
-export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
+// Compute human-readable relative time (e.g., "2h ago", "1d ago", "recently")
+function formatPostedTime(
+  postedAt?: string | null,
+  fetchedAt?: string | null,
+  createdAt?: string | null
+): string {
+  const dateStr = postedAt || fetchedAt || createdAt;
+  if (!dateStr) return "recently";
+
+  try {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    if (isNaN(diffMs) || diffMs < 0) return "recently";
+
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    if (diffMinutes < 60) {
+      return diffMinutes <= 1 ? "just now" : `${diffMinutes}m ago`;
+    }
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    }
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return "1d ago";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    return `${Math.floor(diffDays / 30)}mo ago`;
+  } catch {
+    return "recently";
+  }
+}
+
+export function JobCard({ job, onToggleSave, onToggleApplied, application }: JobCardProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [applyDialogOpen, setApplyDialogOpen] = useState(false);
+  const [currentApplication, setCurrentApplication] = useState<ApplicationSummary | null>(application || null);
+  const [missingDialogOpen, setMissingDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [missingFields, setMissingFields] = useState<MissingFieldInfo[]>([]);
+  const [reviewFields, setReviewFields] = useState<any[]>([]);
+
+  // Sync application prop whenever updated asynchronously
+  React.useEffect(() => {
+    if (application) {
+      setCurrentApplication(application);
+    }
+  }, [application]);
 
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -40,24 +91,54 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
     }
   };
 
-  const handleApplyClick = () => {
-    window.open(job.job_url, "_blank", "noopener,noreferrer");
-    if (!job.applied_status) {
+  const handleApplyClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setApplyDialogOpen(true);
+  };
+
+  const handleApplicationCreated = (applicationId: string, status: ApplicationStatus) => {
+    setCurrentApplication({ id: applicationId, status });
+    // Update applied_status optimistically for manual applies
+    if (status === ApplicationStatus.MANUAL_APPLY_STARTED && !job.applied_status) {
       onToggleApplied(job.id, false);
     }
   };
 
-  const handleToggleApplied = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsApplying(true);
-    try {
-      await onToggleApplied(job.id, Boolean(job.applied_status));
-    } finally {
-      setIsApplying(false);
+  const handleOpenApplicationDetails = async () => {
+    if (!currentApplication) return;
+    if (
+      currentApplication.status === ApplicationStatus.MISSING_PROFILE_INFO ||
+      currentApplication.status === ApplicationStatus.AWAITING_USER_INPUT
+    ) {
+      try {
+        const res = await fetch(`/api/applications/${currentApplication.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMissingFields(data.application?.missing_fields || []);
+        }
+      } catch {}
+      setMissingDialogOpen(true);
+    } else if (currentApplication.status === ApplicationStatus.AWAITING_USER_REVIEW) {
+      try {
+        const res = await fetch(`/api/applications/${currentApplication.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          const forms = data.application?.application_forms || [];
+          const formFields = forms[0]?.application_form_fields || [];
+          setReviewFields(
+            formFields.map((ff: any) => ({
+              label: ff.label || ff.field_key,
+              value: ff.current_value,
+              status: ff.status === "MAPPED" ? "mapped" : ff.status === "MISSING" ? "missing" : "optional",
+            }))
+          );
+        }
+      } catch {}
+      setReviewDialogOpen(true);
     }
   };
 
-  // Platform configuration with logos from public/platforms
+  // Platform branding configuration
   const platform = (job.platform || "greenhouse").toLowerCase();
   let platformLabel = "Greenhouse";
   let platformLogoSrc = "/platforms/Greenhouse.png";
@@ -133,50 +214,154 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
     platformBadgeStyle = "bg-pink-500/15 text-pink-300 border-pink-500/30";
   }
 
+  // 1. Sanitize Match Score: strip any existing % signs or non-digits to avoid "%%" bug
+  const rawScore =
+    typeof job.match_score === "string"
+      ? parseInt((job.match_score as string).replace(/[^0-9]/g, ""), 10)
+      : typeof job.match_score === "number"
+      ? Math.round(job.match_score)
+      : 85;
 
-  // Match score color & level
-  const matchScore = job.match_score || 85;
-  let matchColorClass = "text-emerald-400";
-  let matchProgressGradient = "from-emerald-500 to-teal-400";
-  let matchBorderClass = "border-emerald-500/20";
-  let matchBg = "bg-emerald-500/10";
+  const matchScore = isNaN(rawScore) || rawScore <= 0 ? 85 : Math.min(100, rawScore);
 
-  if (matchScore < 80) {
-    matchColorClass = "text-amber-400";
-    matchProgressGradient = "from-amber-500 to-yellow-400";
-    matchBorderClass = "border-amber-500/20";
-    matchBg = "bg-amber-500/10";
-  } else if (matchScore < 90) {
-    matchColorClass = "text-cyan-400";
-    matchProgressGradient = "from-cyan-500 to-blue-400";
-    matchBorderClass = "border-cyan-500/20";
-    matchBg = "bg-cyan-500/10";
+  // Match quality tier & dynamic colors
+  let matchQualityText = "Excellent match";
+  let matchQualityColor = "text-emerald-400";
+  let matchProgressColor = "bg-emerald-500";
+
+  if (matchScore >= 90) {
+    matchQualityText = "Excellent match";
+    matchQualityColor = "text-emerald-400";
+    matchProgressColor = "bg-emerald-500";
+  } else if (matchScore >= 80) {
+    matchQualityText = "Strong match";
+    matchQualityColor = "text-emerald-400";
+    matchProgressColor = "bg-emerald-500";
+  } else if (matchScore >= 70) {
+    matchQualityText = "Good match";
+    matchQualityColor = "text-teal-400";
+    matchProgressColor = "bg-teal-500";
+  } else {
+    matchQualityText = "Fair match";
+    matchQualityColor = "text-amber-400";
+    matchProgressColor = "bg-amber-500";
   }
 
-  // Clean company name for initial avatar
-  const companyInitials = job.company
-    ? job.company
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "CO";
+  // 2. Format Company Monogram Initials
+  const companyInitials = (job.company || "Company")
+    .split(/\s+/)
+    .map((n) => n[0])
+    .filter(Boolean)
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  // 3. Format Salary Range nicely
+  const salaryDisplay = useMemo(() => {
+    if (job.salary && job.salary.trim()) {
+      return job.salary.trim();
+    }
+    if (job.salary_min || job.salary_max) {
+      const cur =
+        job.salary_currency === "EUR"
+          ? "€"
+          : job.salary_currency === "GBP"
+          ? "£"
+          : "$";
+      if (job.salary_min && job.salary_max) {
+        const minK = Math.round(job.salary_min / 1000);
+        const maxK = Math.round(job.salary_max / 1000);
+        return `${cur}${minK}K – ${cur}${maxK}K`;
+      }
+      if (job.salary_min) return `From ${cur}${Math.round(job.salary_min / 1000)}K`;
+      if (job.salary_max) return `Up to ${cur}${Math.round(job.salary_max / 1000)}K`;
+    }
+    return null;
+  }, [job.salary, job.salary_min, job.salary_max, job.salary_currency]);
+
+  // 4. Format Workplace / Remote Type
+  const workplaceDisplay = useMemo(() => {
+    const r = (job.remote_type || "").toLowerCase();
+    const l = (job.location || "").toLowerCase();
+    if (r === "remote" || l.includes("remote")) return "Remote";
+    if (r === "hybrid" || l.includes("hybrid")) return "Hybrid";
+    if (r === "onsite" || r === "on-site") return "On-site";
+    return "Remote";
+  }, [job.remote_type, job.location]);
+
+  // 5. Format Experience Level
+  const experienceDisplay = useMemo(() => {
+    if (job.experience_level && job.experience_level.trim()) {
+      const exp = job.experience_level.trim().toLowerCase();
+      if (exp.includes("senior")) return "Senior Level";
+      if (exp.includes("lead") || exp.includes("principal")) return "Lead / Principal";
+      if (exp.includes("mid")) return "Mid Level";
+      if (exp.includes("entry") || exp.includes("junior")) return "Entry Level";
+      return job.experience_level.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (job.job_type && job.job_type.trim()) {
+      return job.job_type.trim();
+    }
+    return "Mid Level";
+  }, [job.experience_level, job.job_type]);
+
+  // 6. Format Location
+  const locationDisplay = useMemo(() => {
+    if (job.location && job.location.trim()) {
+      // If location is purely "Remote", prioritize country or fallback
+      if (job.location.toLowerCase() === "remote" && job.country && job.country !== "Worldwide") {
+        return job.country;
+      }
+      return job.location;
+    }
+    if (job.country && job.country.trim() && job.country !== "Worldwide") {
+      return job.country;
+    }
+    return "San Jose, CA";
+  }, [job.location, job.country]);
+
+  // 7. Parse Tags
+  const { visibleTags, remainingCount } = useMemo(() => {
+    let list: string[] = [];
+    if (Array.isArray(job.tags)) {
+      list = job.tags.filter(Boolean);
+    } else if (typeof job.tags === "string") {
+      try {
+        const parsed = JSON.parse(job.tags);
+        if (Array.isArray(parsed)) list = parsed.filter(Boolean);
+      } catch {
+        list = (job.tags as string).split(",").map((s) => s.trim()).filter(Boolean);
+      }
+    }
+
+    // Default fallback tags if none exist
+    if (list.length === 0) {
+      const titleWords = job.title.split(/\s+/).filter((w) => w.length > 3);
+      list = titleWords.slice(0, 3);
+    }
+
+    return {
+      visibleTags: list.slice(0, 3),
+      remainingCount: Math.max(0, list.length - 3),
+    };
+  }, [job.tags, job.title]);
+
+  const postedAgoText = formatPostedTime(job.posted_at, job.fetched_at, job.created_at);
 
   return (
     <div
       className={cn(
-        "group relative rounded-3xl border p-5 sm:p-6 transition-all duration-300 backdrop-blur-md overflow-hidden",
+        "group relative rounded-2xl sm:rounded-3xl border p-4 sm:p-5 md:p-6 transition-all duration-200 backdrop-blur-md overflow-hidden",
         job.saved_status
-          ? "bg-[#111111]/90 border-white/20 shadow-xl"
-          : "bg-[#0C0C0C]/80 border-white/10 hover:border-white/20 hover:bg-[#111111]/70 shadow-lg"
+          ? "bg-[#131316]/95 border-amber-500/30 shadow-xl shadow-amber-500/5"
+          : "bg-[#111113]/90 hover:bg-[#151518] border-white/10 hover:border-white/20 shadow-lg shadow-black/30"
       )}
     >
-      {/* Top Bar: Company Logo/Avatar, Titles, Match Percentage */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3.5 min-w-0">
-          {/* Company Avatar / Logo */}
-          <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-tr from-white/10 to-white/5 border border-white/15 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-inner overflow-hidden">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        {/* Left Section: Company Logo + Job Details */}
+        <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 flex-1">
+          {/* Logo container: clean high-contrast rounded card */}
+          <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white p-2 border border-white/20 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
             {job.company_logo && !imgError ? (
               <Image
                 src={job.company_logo}
@@ -184,236 +369,251 @@ export function JobCard({ job, onToggleSave, onToggleApplied }: JobCardProps) {
                 width={48}
                 height={48}
                 unoptimized
-                className="object-cover w-full h-full"
+                className="object-contain w-full h-full"
                 onError={() => setImgError(true)}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center">
-                <span>{companyInitials}</span>
-              </div>
+              <span className="font-bold text-slate-800 text-sm sm:text-base tracking-tight select-none">
+                {companyInitials}
+              </span>
             )}
           </div>
 
-          {/* Title & Company */}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              {/* Platform badge with authentic logo */}
-              <span
-                className={cn(
-                  "text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 tracking-tight",
-                  platformBadgeStyle
-                )}
+          {/* Job Details: Title, Company, Metadata Row with Icons, Tags */}
+          <div className="min-w-0 flex-1 space-y-2">
+            {/* Title & Company */}
+            <div>
+              <h3
+                onClick={handleApplyClick}
+                className="font-bold text-base sm:text-lg text-white hover:text-indigo-400 transition-colors tracking-tight leading-snug cursor-pointer line-clamp-1"
+                title={job.title}
               >
-                <span className="w-3.5 h-3.5 relative flex items-center justify-center shrink-0">
+                {job.title}
+              </h3>
+
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs sm:text-sm text-white/60 font-medium truncate">
+                  {job.company}
+                </span>
+
+                {/* Platform Badge */}
+                <span
+                  className={cn(
+                    "text-[10px] font-mono font-medium px-2 py-0.5 rounded-full border inline-flex items-center gap-1 shrink-0",
+                    platformBadgeStyle
+                  )}
+                >
                   <Image
                     src={platformLogoSrc}
                     alt={platformLabel}
-                    width={14}
-                    height={14}
-                    className="w-full h-full object-contain"
+                    width={11}
+                    height={11}
+                    className="w-2.5 h-2.5 sm:w-3 sm:h-3 object-contain"
                   />
+                  <span className="hidden sm:inline">{platformLabel}</span>
                 </span>
-                <span>{platformLabel}</span>
-              </span>
 
-              {job.applied_status && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/25 flex items-center gap-1 font-semibold">
-                  <CheckCircle className="w-3 h-3" />
-                  Applied
-                </span>
+                {/* Applied Badge */}
+                {job.applied_status && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/25 inline-flex items-center gap-1 shrink-0">
+                    <CheckCircle className="w-2.5 h-2.5" />
+                    Applied
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Metadata Row with Icons (Remote, Salary, Experience, Location) */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/50">
+              {/* Remote / Workplace */}
+              <div className="inline-flex items-center gap-1.5 shrink-0">
+                <Wifi className="w-3.5 h-3.5 text-white/40" />
+                <span>{workplaceDisplay}</span>
+              </div>
+
+              {/* Salary Range */}
+              {salaryDisplay && (
+                <div className="inline-flex items-center gap-1.5 shrink-0">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-mono text-emerald-300 font-medium">
+                    {salaryDisplay}
+                  </span>
+                </div>
               )}
+
+              {/* Experience Level */}
+              <div className="inline-flex items-center gap-1.5 shrink-0">
+                <Briefcase className="w-3.5 h-3.5 text-white/40" />
+                <span>{experienceDisplay}</span>
+              </div>
+
+              {/* Location */}
+              <div className="inline-flex items-center gap-1.5 shrink-0">
+                <MapPin className="w-3.5 h-3.5 text-white/40" />
+                <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                  {locationDisplay}
+                </span>
+              </div>
             </div>
 
-            <h3 className="font-bold text-base sm:text-lg text-white tracking-tight leading-snug group-hover:text-white transition-colors line-clamp-1">
-              {job.title}
-            </h3>
+            {/* Skill / Tag Pills Row */}
+            {visibleTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                {visibleTags.map((tag, idx) => (
+                  <span
+                    key={`${tag}-${idx}`}
+                    className="text-xs px-2.5 py-0.5 rounded-lg bg-white/[0.05] border border-white/5 text-white/70 font-medium hover:bg-white/[0.08] transition-colors"
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {remainingCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-lg bg-white/[0.03] border border-white/5 text-white/40 font-mono">
+                    +{remainingCount}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
-            <div className="flex items-center gap-2 text-xs text-white/60 mt-0.5">
-              <span className="font-medium text-white/80">{job.company}</span>
-              <span>•</span>
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-white/40" />
-                {job.location || "Remote"}
+        {/* Right Section: Match Score Block + Action Buttons */}
+        <div className="flex items-center justify-between lg:justify-end gap-5 pt-3 lg:pt-0 border-t lg:border-t-0 border-white/5 shrink-0">
+          {/* Match Score & Progress */}
+          <div className="space-y-1.5 min-w-[120px]">
+            {/* Single % strictly formatted */}
+            <div className="font-bold text-sm sm:text-base text-white tracking-tight">
+              {matchScore}% Match
+            </div>
+
+            {/* Horizontal Progress Bar */}
+            <div className="w-28 sm:w-32 h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-700", matchProgressColor)}
+                style={{ width: `${matchScore}%` }}
+              />
+            </div>
+
+            {/* Match Quality & Relative Time */}
+            <div className="flex flex-col text-[11px] leading-tight">
+              <span className={cn("font-medium", matchQualityColor)}>
+                {matchQualityText}
+              </span>
+              <span className="text-white/40 text-[10px] mt-0.5">
+                Posted {postedAgoText}
               </span>
             </div>
           </div>
-        </div>
 
-        {/* Match Percentage Badge */}
-        <div
-          className={cn(
-            "flex flex-col items-end shrink-0 px-3 py-1.5 rounded-2xl border backdrop-blur-sm",
-            matchBg,
-            matchBorderClass
-          )}
-        >
-          <div className="flex items-center gap-1">
-            <Sparkles className={cn("w-3.5 h-3.5", matchColorClass)} />
-            <span className={cn("font-mono font-bold text-sm sm:text-base", matchColorClass)}>
-              {matchScore}%
-            </span>
-          </div>
-          <span className="text-[10px] text-white/50 font-medium">Match</span>
-        </div>
-      </div>
-
-      {/* Match Score Progress Bar */}
-      <div className="mt-4 space-y-1">
-        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-          <div
-            className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-700", matchProgressGradient)}
-            style={{ width: `${matchScore}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Middle: Badges (Country, Workplace/Remote, Job Type, Experience, Salary, Posted Time) */}
-      <div className="flex flex-wrap items-center gap-2 mt-4">
-        {job.salary && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-mono font-medium">
-            <DollarSign className="w-3 h-3 text-emerald-400" />
-            <span>{job.salary}</span>
-          </div>
-        )}
-
-        {/* Workplace badge (Remote / Hybrid / On-site) */}
-        {job.remote_type && (
-          <div
-            className={cn(
-              "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-medium",
-              job.remote_type === "remote"
-                ? "bg-violet-500/10 border-violet-500/25 text-violet-300"
-                : job.remote_type === "hybrid"
-                ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300"
-                : "bg-white/[0.04] border-white/10 text-white/70"
-            )}
-          >
-            <span>{job.remote_type === "remote" ? "🌐 Remote" : job.remote_type === "hybrid" ? "🏢 Hybrid" : "📍 On-site"}</span>
-          </div>
-        )}
-
-        {/* Country badge if present */}
-        {job.country && job.country !== "Worldwide" && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white/80">
-            <span>
-              {job.country.includes("United States")
-                ? "🇺🇸"
-                : job.country.includes("United Kingdom")
-                ? "🇬🇧"
-                : job.country.includes("India")
-                ? "🇮🇳"
-                : job.country.includes("Canada")
-                ? "🇨🇦"
-                : job.country.includes("Germany")
-                ? "🇩🇪"
-                : job.country.includes("France")
-                ? "🇫🇷"
-                : job.country.includes("Australia")
-                ? "🇦🇺"
-                : job.country.includes("Netherlands")
-                ? "🇳🇱"
-                : job.country.includes("Singapore")
-                ? "🇸🇬"
-                : "🌐"}
-            </span>
-            <span>{job.country}</span>
-          </div>
-        )}
-
-        {job.job_type && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white/70">
-            <Briefcase className="w-3 h-3 text-white/40" />
-            <span>{job.job_type}</span>
-          </div>
-        )}
-
-        {job.experience_level && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white/70">
-            <Layers className="w-3 h-3 text-white/40" />
-            <span>{job.experience_level}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Description Snippet if present */}
-      {job.description && (
-        <p className="text-xs text-white/50 line-clamp-2 mt-3 leading-relaxed">
-          {job.description}
-        </p>
-      )}
-
-      {/* Tags List */}
-      {job.tags && job.tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mt-3.5">
-          {job.tags.slice(0, 5).map((tag, idx) => (
-            <span
-              key={`${tag}-${idx}`}
-              className="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-white/[0.05] border border-white/5 text-white/70"
-            >
-              {tag}
-            </span>
-          ))}
-          {job.tags.length > 5 && (
-            <span className="text-[10px] font-mono text-white/40 pl-1">
-              +{job.tags.length - 5} more
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Bottom Footer: Actions */}
-      <div className="flex items-center justify-between gap-3 mt-5 pt-4 border-t border-white/10">
-        <div className="flex items-center gap-2">
-          {/* Bookmark / Save Button */}
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            title={job.saved_status ? "Remove bookmark" : "Save job"}
-            className={cn(
-              "h-9 px-3 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer",
-              job.saved_status
-                ? "bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25"
-                : "bg-white/[0.04] border-white/10 text-white/60 hover:text-white hover:bg-white/[0.08]"
-            )}
-          >
-            {job.saved_status ? (
-              <BookmarkCheck className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+          {/* Action Buttons Column */}
+          <div className="flex flex-col gap-2 shrink-0 min-w-[120px] sm:min-w-[130px]">
+            {currentApplication?.status === ApplicationStatus.SUBMITTED ? (
+              <div className="h-9 sm:h-10 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 w-full">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Submitted</span>
+              </div>
+            ) : currentApplication?.status === ApplicationStatus.MISSING_PROFILE_INFO || currentApplication?.status === ApplicationStatus.AWAITING_USER_INPUT ? (
+              <Button
+                onClick={handleOpenApplicationDetails}
+                className="h-9 sm:h-10 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs sm:text-sm shadow-md transition-all cursor-pointer w-full"
+              >
+                Complete Info
+              </Button>
+            ) : currentApplication?.status === ApplicationStatus.AWAITING_USER_REVIEW ? (
+              <Button
+                onClick={handleOpenApplicationDetails}
+                className="h-9 sm:h-10 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs sm:text-sm shadow-md transition-all cursor-pointer w-full"
+              >
+                Review & Submit
+              </Button>
             ) : (
-              <Bookmark className="w-3.5 h-3.5" />
+              <Button
+                onClick={handleApplyClick}
+                className="h-9 sm:h-10 px-4 sm:px-5 rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white font-semibold text-xs sm:text-sm shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer w-full"
+              >
+                Apply Now
+              </Button>
             )}
-            <span>{job.saved_status ? "Saved" : "Save"}</span>
-          </button>
 
-          {/* Mark Applied Toggle */}
-          <button
-            onClick={handleToggleApplied}
-            disabled={isApplying}
-            title={job.applied_status ? "Mark unapplied" : "Mark as applied"}
-            className={cn(
-              "h-9 px-3 rounded-xl border flex items-center gap-1.5 text-xs font-medium transition-all cursor-pointer",
-              job.applied_status
-                ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
-                : "bg-white/[0.02] border-white/5 text-white/40 hover:text-white hover:bg-white/[0.06]"
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className={cn(
+                "h-8 sm:h-9 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium transition-all cursor-pointer w-full",
+                job.saved_status
+                  ? "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                  : "bg-white/[0.04] border-white/15 text-white/80 hover:text-white hover:bg-white/10"
+              )}
+            >
+              <Bookmark
+                className={cn(
+                  "w-3.5 h-3.5",
+                  job.saved_status ? "fill-amber-400 text-amber-400" : "text-white/60"
+                )}
+              />
+              <span>{job.saved_status ? "Saved" : "Save"}</span>
+            </button>
+
+            {/* Application Status Card */}
+            {currentApplication && (
+              <ApplicationStatusCard
+                applicationId={currentApplication.id}
+                initialStatus={currentApplication.status}
+                jobId={job.id}
+                onViewDetails={handleOpenApplicationDetails}
+                onStatusChange={(nextStatus) => {
+                  setCurrentApplication((prev) => prev ? { ...prev, status: nextStatus } : null);
+                }}
+              />
             )}
-          >
-            <CheckCircle
-              className={cn("w-3.5 h-3.5", job.applied_status ? "text-blue-400" : "text-white/40")}
-            />
-            <span className="hidden sm:inline">
-              {job.applied_status ? "Applied" : "Mark Applied"}
-            </span>
-          </button>
+          </div>
         </div>
-
-        {/* Apply Now Button */}
-        <Button
-          onClick={handleApplyClick}
-          className="relative group h-9 px-4 rounded-xl bg-white text-black font-semibold text-xs shadow-md hover:bg-white/90 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-        >
-          <span>Apply Now</span>
-          <ExternalLink className="w-3.5 h-3.5 text-black group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </Button>
       </div>
+
+      {/* Apply Method Dialog */}
+      <ApplyMethodDialog
+        open={applyDialogOpen}
+        onOpenChange={setApplyDialogOpen}
+        jobId={job.id}
+        jobTitle={job.title}
+        companyName={job.company}
+        applyUrl={job.job_url || ""}
+        onApplicationCreated={handleApplicationCreated}
+      />
+
+      {/* Missing Profile Fields Dialog */}
+      {currentApplication && (
+        <MissingProfileFieldsDialog
+          open={missingDialogOpen}
+          onOpenChange={setMissingDialogOpen}
+          applicationId={currentApplication.id}
+          jobTitle={job.title}
+          companyName={job.company}
+          missingFields={missingFields}
+          onSuccess={() => {
+            setCurrentApplication((prev) => prev ? { ...prev, status: ApplicationStatus.QUEUED } : null);
+          }}
+        />
+      )}
+
+      {/* Application Review Dialog */}
+      {currentApplication && (
+        <ApplicationReviewDialog
+          open={reviewDialogOpen}
+          onOpenChange={setReviewDialogOpen}
+          applicationId={currentApplication.id}
+          jobTitle={job.title}
+          companyName={job.company}
+          platform={job.platform}
+          fields={reviewFields}
+          onConfirm={() => {
+            setCurrentApplication((prev) => prev ? { ...prev, status: ApplicationStatus.SUBMITTING } : null);
+          }}
+          onStatusChange={(newStatus) => {
+            setCurrentApplication((prev) => prev ? { ...prev, status: newStatus } : null);
+          }}
+        />
+      )}
     </div>
   );
 }
