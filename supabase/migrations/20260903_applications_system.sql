@@ -3,33 +3,41 @@
 -- =============================================================================
 
 -- 1. Application status enum
-CREATE TYPE IF NOT EXISTS public.application_status AS ENUM (
-  'QUEUED',
-  'DETECTING_PLATFORM',
-  'DETECTING_FORM',
-  'MAPPING_FIELDS',
-  'MISSING_PROFILE_INFO',
-  'READY_TO_APPLY',
-  'FILLING_FORM',
-  'AWAITING_USER_REVIEW',
-  'AWAITING_USER_ACTION',
-  'AWAITING_USER_INPUT',
-  'SUBMITTING',
-  'SUBMITTED',
-  'SUBMISSION_UNCONFIRMED',
-  'FAILED',
-  'CANCELLED',
-  'MANUAL_APPLY_STARTED'
-);
+DO $$ BEGIN
+  CREATE TYPE public.application_status AS ENUM (
+    'QUEUED',
+    'DETECTING_PLATFORM',
+    'DETECTING_FORM',
+    'MAPPING_FIELDS',
+    'MISSING_PROFILE_INFO',
+    'READY_TO_APPLY',
+    'FILLING_FORM',
+    'AWAITING_USER_REVIEW',
+    'AWAITING_USER_ACTION',
+    'AWAITING_USER_INPUT',
+    'SUBMITTING',
+    'SUBMITTED',
+    'SUBMISSION_UNCONFIRMED',
+    'FAILED',
+    'CANCELLED',
+    'MANUAL_APPLY_STARTED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- 2. Application form field status enum
-CREATE TYPE IF NOT EXISTS public.field_status AS ENUM (
-  'MAPPED',
-  'MISSING',
-  'AMBIGUOUS',
-  'UNSUPPORTED',
-  'OPTIONAL'
-);
+DO $$ BEGIN
+  CREATE TYPE public.field_status AS ENUM (
+    'MAPPED',
+    'MISSING',
+    'AMBIGUOUS',
+    'UNSUPPORTED',
+    'OPTIONAL'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- 3. Applications table (one per user per job per attempt)
 CREATE TABLE IF NOT EXISTS public.applications (
@@ -137,26 +145,37 @@ ALTER TABLE public.application_form_fields ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.application_worker_locks ENABLE ROW LEVEL SECURITY;
 
 -- Applications: users manage their own
+DROP POLICY IF EXISTS "Users can select own applications" ON public.applications;
 CREATE POLICY "Users can select own applications"
   ON public.applications FOR SELECT USING (user_id = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can insert own applications" ON public.applications;
 CREATE POLICY "Users can insert own applications"
   ON public.applications FOR INSERT WITH CHECK (user_id = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can update own applications" ON public.applications;
 CREATE POLICY "Users can update own applications"
   ON public.applications FOR UPDATE USING (user_id = auth.uid()::text);
 
 -- Application forms: accessible via application ownership
+DROP POLICY IF EXISTS "Users can select own application forms" ON public.application_forms;
 CREATE POLICY "Users can select own application forms"
   ON public.application_forms FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM public.applications a
     WHERE a.id = application_id AND a.user_id = auth.uid()::text
   ));
+
+DROP POLICY IF EXISTS "Service can insert application forms" ON public.application_forms;
 CREATE POLICY "Service can insert application forms"
   ON public.application_forms FOR INSERT TO service_role WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service can update application forms" ON public.application_forms;
 CREATE POLICY "Service can update application forms"
   ON public.application_forms FOR UPDATE TO service_role USING (true);
 
 -- Application form fields: accessible via form ownership
+DROP POLICY IF EXISTS "Users can select own application form fields" ON public.application_form_fields;
 CREATE POLICY "Users can select own application form fields"
   ON public.application_form_fields FOR SELECT
   USING (EXISTS (
@@ -164,9 +183,12 @@ CREATE POLICY "Users can select own application form fields"
     JOIN public.applications a ON a.id = af.application_id
     WHERE af.id = application_form_id AND a.user_id = auth.uid()::text
   ));
+
+DROP POLICY IF EXISTS "Service can manage application form fields" ON public.application_form_fields;
 CREATE POLICY "Service can manage application form fields"
   ON public.application_form_fields FOR ALL TO service_role USING (true);
 
 -- Worker locks: internal service only
+DROP POLICY IF EXISTS "Service can manage worker locks" ON public.application_worker_locks;
 CREATE POLICY "Service can manage worker locks"
   ON public.application_worker_locks FOR ALL TO service_role USING (true);

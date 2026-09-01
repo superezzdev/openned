@@ -45,3 +45,7 @@ next-env.d.ts
 *-firebase-adminsdk-*.json
 *.pem
 *.key
+
+# supabase
+supabase/.temp/
+

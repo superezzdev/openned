@@ -151,7 +151,15 @@ export function JobsDashboard({
               return [...data.jobs, ...remaining];
             });
             if (data.platformCounts) {
-              setPlatformCounts(data.platformCounts);
+              setPlatformCounts((prev) => {
+                const merged = { ...prev };
+                for (const [k, v] of Object.entries(data.platformCounts)) {
+                  if (typeof v === "number" && (v > 0 || !merged[k])) {
+                    merged[k] = v;
+                  }
+                }
+                return merged;
+              });
             }
           }
         }
@@ -160,6 +168,15 @@ export function JobsDashboard({
       }
     }
   };
+
+  const currentPlatformJobs = React.useMemo(() => {
+    if (!selectedPlatform || selectedPlatform === "all") return jobs;
+    const p = selectedPlatform.toLowerCase();
+    return jobs.filter((j) => {
+      const jp = (j.platform || "").toLowerCase();
+      return jp === p || jp.includes(p) || p.includes(jp);
+    });
+  }, [jobs, selectedPlatform]);
 
   const handleClearFilters = () => {
     setSelectedPlatform("all");
@@ -213,7 +230,7 @@ export function JobsDashboard({
             <h2 className="font-bold text-lg text-white tracking-tight flex items-center gap-2">
               <span>Top Matched Roles</span>
               <span className="text-xs font-mono font-normal text-white/40">
-                ({jobs.length} total)
+                ({currentPlatformJobs.length} total)
               </span>
             </h2>
           </div>
