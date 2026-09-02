@@ -55,6 +55,40 @@ export interface ParsedResumeData {
 }
 
 /**
+ * Checks if text appears to be unreadable binary data or PDF binary streams.
+ */
+export function isBinaryOrUnreadableText(text: string): boolean {
+  if (!text) return true;
+  if (text.startsWith("%PDF-")) return true;
+  const nonPrintableCount = (text.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\uFFFD]/g) || []).length;
+  return nonPrintableCount / text.length > 0.05;
+}
+
+/**
+ * Checks if extracted text indicates a scanned/image-only document or unreadable binary stream.
+ */
+export function isLikelyScannedDocument(text: string, mimeType: string, fileName: string): boolean {
+  const isPdf = mimeType.includes("pdf") || fileName.toLowerCase().endsWith(".pdf");
+  if (!isPdf) return false;
+  if (!text || isBinaryOrUnreadableText(text)) return true;
+  return text.trim().length < 150;
+}
+
+/**
+ * Normalizes Unicode bullets, control characters, and line endings.
+ */
+export function cleanExtractedResumeText(raw: string): string {
+  if (!raw) return "";
+  return raw
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\u25AA\u25AB\u0107]/g, " • ")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Extracts raw text and any embedded hyperlinks from an uploaded resume buffer (PDF, DOCX, or TXT).
  */
 export async function extractTextFromResume(
@@ -66,9 +100,25 @@ export async function extractTextFromResume(
 
   if (mimeType.includes("pdf") || lowerName.endsWith(".pdf")) {
     try {
+      try {
+        const path = await import("path");
+        const fs = await import("fs");
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const candidatePaths = [
+          path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"),
+          path.resolve(process.cwd(), "node_modules/pdf-parse/dist/worker/pdf.worker.mjs"),
+        ];
+        for (const p of candidatePaths) {
+          if (fs.existsSync(/*turbopackIgnore: true*/ p)) {
+            pdfjs.GlobalWorkerOptions.workerSrc = p;
+            break;
+          }
+        }
+      } catch {}
+
       const parser = new PDFParse({ data: buffer });
       const result = await parser.getText();
-      let text = result.text || "";
+      let text = cleanExtractedResumeText(result.text || "");
 
       // Extract raw links from PDF text or binary URL patterns
       const rawBufferStr = buffer.toString("binary");
@@ -93,10 +143,16 @@ export async function extractTextFromResume(
         }
       }
 
+      if (isBinaryOrUnreadableText(text)) {
+        console.warn("Extracted PDF text is binary/unreadable; delegating to multimodal vision.");
+        return "";
+      }
+
       return text;
     } catch (err) {
-      console.warn("Failed to parse PDF with PDFParse, using fallback text decoding:", err);
-      return buffer.toString("utf-8");
+      console.warn("Failed to parse PDF with PDFParse, delegating to multimodal vision:", err);
+      // Return empty string to reliably trigger multimodal vision fallback for scanned/complex PDFs
+      return "";
     }
   }
 
@@ -108,24 +164,25 @@ export async function extractTextFromResume(
   ) {
     try {
       const result = await mammoth.extractRawText({ buffer });
-      return result.value || "";
+      return cleanExtractedResumeText(result.value || "");
     } catch (err) {
       console.warn("Failed to parse DOCX using mammoth:", err);
-      return buffer.toString("utf-8");
+      return cleanExtractedResumeText(buffer.toString("utf-8"));
     }
   }
 
   // Plain text / markdown
-  return buffer.toString("utf-8");
+  return cleanExtractedResumeText(buffer.toString("utf-8"));
 }
 
 /**
  * Converts StrictResumeExtraction to the legacy ParsedResumeData format
- * while ensuring ZERO hallucination.
+ * while ensuring ZERO hallucination and strict authentication separation.
+ * Email is derived ONLY from the resume, NEVER from auth accounts.
  */
 export function convertStrictToLegacy(
   strict: StrictResumeExtraction,
-  fallbackEmail = ""
+  _ignoredFallbackEmail?: string
 ): ParsedResumeData {
   // Collect all valid skills
   const skillsSet = new Set<string>();
@@ -203,7 +260,7 @@ export function convertStrictToLegacy(
     profile: {
       first_name: strict.personal.first_name.value || "",
       last_name: strict.personal.last_name.value || "",
-      email: strict.personal.email.value || fallbackEmail,
+      email: strict.personal.email.value || "", // STRICT: Never default to auth email
       phone: strict.personal.phone.value || "",
       location: strict.personal.location.value || "",
       summary: "", // Do not generate a fake summary
@@ -222,22 +279,21 @@ export function convertStrictToLegacy(
  * Heuristic fallback parser without ANY fake or hardcoded mock defaults.
  */
 export function heuristicResumeParser(
-  rawText: string,
-  defaultEmail: string = ""
+  rawText: string
 ): ParsedResumeData {
   const strict = strictHeuristicFallback(rawText);
-  return convertStrictToLegacy(strict, defaultEmail);
+  return convertStrictToLegacy(strict);
 }
 
 /**
- * Main parser entry point: Runs strict zero-hallucination Gemini extraction
+ * Main parser entry point: Runs strict zero-hallucination multi-model extraction
  * validated by ResumeProfileValidator.
  */
 export async function parseResumeText(
   rawText: string,
-  userEmail: string = ""
+  options?: { fileBuffer?: Buffer; mimeType?: string; isScannedPdf?: boolean }
 ): Promise<ParsedResumeData> {
-  const strict = await parseResumeStrict(rawText);
+  const strict = await parseResumeStrict(rawText, options);
   const validation = ResumeProfileValidator.validate(rawText, strict);
-  return convertStrictToLegacy(validation.verifiedData, userEmail);
+  return convertStrictToLegacy(validation.verifiedData);
 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { extractTextFromResume, convertStrictToLegacy } from "@/lib/resume-parser";
+import {
+  extractTextFromResume,
+  convertStrictToLegacy,
+  isLikelyScannedDocument,
+} from "@/lib/resume-parser";
 import { parseResumeStrict } from "@/lib/resume/parser-engine";
 import { stageAndSyncResumeProfile } from "@/lib/resume/profile-sync";
 
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest) {
         .from("profiles")
         .insert({
           user_id: user.id,
-          email: user.email,
+          // Candidate job profile email is separate from auth email; it is populated from resume
           first_name: user.user_metadata?.full_name?.split(" ")[0] || "",
           last_name: user.user_metadata?.full_name?.split(" ").slice(1).join(" ") || "",
         })
@@ -98,8 +102,14 @@ export async function POST(req: NextRequest) {
       file.name
     );
 
-    // 5. Parse with Strict Zero-Hallucination Engine
-    const strictExtraction = await parseResumeStrict(rawText);
+    const isScannedPdf = isLikelyScannedDocument(rawText, file.type, file.name);
+
+    // 5. Parse with Multi-Model Fallback Engine (Gemini + Groq + Multimodal Vision)
+    const strictExtraction = await parseResumeStrict(rawText, {
+      fileBuffer,
+      mimeType: file.type,
+      isScannedPdf,
+    });
 
     // 6. Stage in resume_parsed_profiles, Validate via Anti-Hallucination Guard,
     // Audit diffs in resume_audit_logs, and Sync Verified Data to Profile
@@ -110,9 +120,21 @@ export async function POST(req: NextRequest) {
       strictExtraction
     );
 
+    // 7. Quality Gate: If substantial document produced zero core entities,
+    // do NOT return partial failure as full success.
+    if (syncResult.validation.isSufficientQuality === false) {
+      return NextResponse.json(
+        {
+          error: "Resume parsing could not reliably extract structured sections. Please ensure your resume format has standard headings (e.g. Experience, Education, Skills) and try again.",
+          validation: syncResult.validation,
+        },
+        { status: 422 }
+      );
+    }
+
+    // 8. Convert strict extraction to legacy profile format (STRICT: No auth email fallback)
     const legacyData = convertStrictToLegacy(
-      syncResult.validation.verifiedData,
-      user.email || ""
+      syncResult.validation.verifiedData
     );
 
     return NextResponse.json({
