@@ -174,7 +174,7 @@ export function OnboardingDialog({
                 Upload your resume to get started
               </h2>
               <p className="text-xs sm:text-sm text-white/60 max-w-md mx-auto leading-relaxed">
-                Welcome, {userName}! Openned extracts your work history, skills,
+                Welcome, {userName}! openned extracts your work history, skills,
                 and credentials to power your AI applications and personalized profile.
               </p>
             </div>
@@ -353,12 +353,18 @@ export function OnboardingDialog({
                 <div>
                   <span className="text-white/40 block text-[11px]">Full Name</span>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-semibold text-white">
-                      {[parsedResult?.profile.first_name, parsedResult?.profile.last_name].filter(Boolean).join(" ") || "Not found"}
-                    </span>
-                    {parsedResult?.profile.first_name && (
-                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                        Verified
+                    {[parsedResult?.profile.first_name, parsedResult?.profile.last_name].filter(Boolean).join(" ") ? (
+                      <>
+                        <span className="font-semibold text-white">
+                          {[parsedResult?.profile.first_name, parsedResult?.profile.last_name].filter(Boolean).join(" ")}
+                        </span>
+                        <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                          Verified
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400/90 font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                        <AlertTriangle className="w-3 h-3" /> Not in resume (Please verify)
                       </span>
                     )}
                   </div>
@@ -367,12 +373,18 @@ export function OnboardingDialog({
                 <div>
                   <span className="text-white/40 block text-[11px]">Email</span>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-semibold text-white truncate max-w-[200px]">
-                      {parsedResult?.profile.email || "Not found"}
-                    </span>
-                    {parsedResult?.profile.email && (
-                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                        Verified
+                    {parsedResult?.profile.email ? (
+                      <>
+                        <span className="font-semibold text-white truncate max-w-[200px]">
+                          {parsedResult.profile.email}
+                        </span>
+                        <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                          Verified
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400/90 font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                        <AlertTriangle className="w-3 h-3" /> Not in resume (Please verify)
                       </span>
                     )}
                   </div>

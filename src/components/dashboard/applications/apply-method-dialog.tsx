@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Bot, User, ExternalLink, Loader2, Zap, CheckCircle2, AlertCircle } from "lucide-react";
+import { Bot, User, ExternalLink, Loader2, Zap, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import { ApplicationStatus } from "@/lib/applications/types";
+import { formatJobPostingTime } from "@/lib/posting-time";
 
 interface ApplyMethodDialogProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface ApplyMethodDialogProps {
   jobTitle: string;
   companyName: string;
   applyUrl: string;
+  postedAt?: string | null;
   onApplicationCreated?: (applicationId: string, status: ApplicationStatus) => void;
 }
 
@@ -25,12 +27,14 @@ export function ApplyMethodDialog({
   jobTitle,
   companyName,
   applyUrl,
+  postedAt,
   onApplicationCreated,
 }: ApplyMethodDialogProps) {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState<string | null>(null);
 
+  const postingTime = postedAt ? formatJobPostingTime(postedAt) : null;
   const isLoading = state === "loading_manual" || state === "loading_auto";
 
   const handleManual = async () => {
@@ -137,10 +141,37 @@ export function ApplyMethodDialog({
       <DialogContent className="sm:max-w-md bg-[#0f1117] border border-white/10 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-white text-lg font-bold">Apply to this Job</DialogTitle>
-          <DialogDescription className="text-white/50 text-sm mt-1">
-            <span className="font-semibold text-white/70">{jobTitle}</span>
-            {" "}at{" "}
-            <span className="font-semibold text-white/70">{companyName}</span>
+          <DialogDescription className="text-white/50 text-sm mt-1 space-y-1">
+            <div>
+              <span className="font-semibold text-white/70">{jobTitle}</span>
+              {" "}at{" "}
+              <span className="font-semibold text-white/70">{companyName}</span>
+            </div>
+            {postingTime && (
+              <span
+                className="inline-flex items-center gap-1.5 text-xs text-sky-300 pt-1"
+                title={postingTime.tooltip}
+                suppressHydrationWarning
+              >
+                <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="text-white/60">Posted {postingTime.displayPrefix || postingTime.relativeText}</span>
+                {postingTime.timeOnlyText ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-1.5 py-0.5 rounded border border-white/10 text-[11px] tracking-tight">
+                      {postingTime.timeOnlyText}
+                    </span>
+                  </>
+                ) : postingTime.dateOnlyText && postingTime.dateOnlyText !== "Recently" ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono text-white/80 text-[11px]">
+                      {postingTime.dateOnlyText}
+                    </span>
+                  </>
+                ) : null}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 

@@ -1,0 +1,73 @@
+RITIK KUMAR
+Backend Developer | Full Stack Engineer
++91 8968995156 • ritik.iit21@gmail.com • github.com/ritikkumar1212 • linkedin.com/in/ritik-kumar-
+a38b2a216
+PROFESSIONAL SUMMARY
+Backend engineer specializing in scalable API design, real-time systems, and data pipeline
+development. Proven expertise building production-grade Node.js and FastAPI applications.
+Passionate about performance optimization, clean architecture, and leveraging AI/ML APIs to
+enhance product capabilities.
+EXPERIENCE
+Backend Developer • Myorbit.ai (Remote)
+April 2025 - June 2025
+• Engineered real-time chat system using Redis Pub/Sub, handling concurrent user
+connections with <100ms message latency
+• Debugged and optimized Express.js + Bun REST APIs, reducing memory footprint by
+35% and eliminating 15+ critical runtime errors in production
+• Built high-performance web scrapers with BeautifulSoup and FastAPI, processing
+10,000+ records daily and storing structured data in PostgreSQL with 99.2% accuracy
+• Implemented error handling, logging, and monitoring pipelines improving deployment
+reliability to 98%+
+Full Stack Developer • Freelance
+Aug 2025 - Present
+• Designed and deployed N8N automation workflows for enterprise clients, automating
+50+ manual business processes and reducing operational overhead by 30%
+• Architected full-stack web application for data aggregation and visualization, combining
+web scrapers with React frontend and PostgreSQL backend
+• Delivered client projects on-time with comprehensive documentation and post-
+deployment support
+TECHNICAL PROJECTS
+IPC Assistant – AI-Powered Legal Aid Tool
+github.com/ritikkumar1212/ipc-assistant
+• Built cross-platform mobile assistant using React Native analyzing crime scenarios and
+mapping them to relevant IPC sections with 92% accuracy
+• Integrated OpenAI API for intelligent prompt-based legal classification and interpretation,
+enabling non-legal professionals to understand applicable laws
+• Designed for real-time legal assistance for law students
+
+-- 1 of 2 --
+
+Web Scraping & Data Aggregation Platform
+• Developed FastAPI backend for multi-site data extraction, supporting concurrent
+scraping of 20+ ecommerce and data sources
+• Created React dashboard displaying aggregated, deduplicated data with real-time
+filtering and export capabilities (CSV, JSON, PDF)
+• Implemented PostgreSQL-backed data pipeline with automatic cleaning, normalization,
+and schema validation
+TECHNICAL SKILLS
+Backend
+Node.js • Express.js • FastAPI • Flask • Bun
+Databases & Caching
+PostgreSQL • MySQL • Redis • Database Design • Query Optimization
+Frontend
+React • React Native • HTML/CSS • Responsive Design
+DevOps & Tools
+Git • Docker • REST APIs • Web Scraping (BeautifulSoup) • N8N • OpenAI API • GitHub Actions
+Core Competencies
+Microservices Architecture • API Design & Documentation • Real-time Systems • Data Pipeline
+Development • Performance Optimization • Clean Code Practices
+EDUCATION
+Bachelor of Engineering in Electronics & Communication
+UIET, Punjab University • Chandigarh
+Expected Graduation: August 2027
+CERTIFICATIONS & ACHIEVEMENTS
+• Open Source Contributor – Active in backend and tooling projects
+• Developer Tools Advocate – Passionate about building tools that improve developer
+experience
+• Multiple Full-Stack Project Completions – Successfully delivered 5+ projects from
+conception to production
+LANGUAGES
+English (Professional) • Hindi (Native)
+
+-- 2 of 2 --
+

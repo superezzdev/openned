@@ -31,9 +31,10 @@ export async function stageAndSyncResumeProfile(
   extraction: StrictResumeExtraction
 ): Promise<SyncProfileResult> {
   const supabase = getAdminClient();
+  const cleanRawText = typeof rawText === "string" ? rawText.replace(/\0/g, "") : "";
 
   // 1. Run Anti-Hallucination & Source Grounding Validation
-  const validation = ResumeProfileValidator.validate(rawText, extraction);
+  const validation = ResumeProfileValidator.validate(cleanRawText, extraction);
   const verified = validation.verifiedData;
 
   // 2. Stage in public.resume_parsed_profiles
@@ -58,7 +59,7 @@ export async function stageAndSyncResumeProfile(
         rejected_count: validation.rejectedFields.length,
       },
       status: "verified",
-      raw_text: rawText,
+      raw_text: cleanRawText,
       parsed_at: new Date().toISOString(),
     })
     .select()
@@ -155,25 +156,17 @@ export async function stageAndSyncResumeProfile(
     profileUpdates.email = verified.personal.email.value;
   }
 
-  // Location: If resume has candidate home location, set it. If not, reset any hallucinated/unsupported location to null.
-  recordAudit(
-    "location",
-    existingProfile?.location,
-    verified.personal.location.value || null,
-    verified.personal.location.evidence,
-    verified.personal.location.confidence
-  );
-  profileUpdates.location = verified.personal.location.value || null;
-
-  // Summary: If resume has verified summary, set it. If not, reset any hallucinated summary to null.
-  recordAudit(
-    "summary",
-    existingProfile?.summary,
-    null,
-    null,
-    "HIGH"
-  );
-  profileUpdates.summary = null;
+  // Location: If resume has candidate home location, set it. If absent from resume, preserve existing user data.
+  if (verified.personal.location.value) {
+    recordAudit(
+      "location",
+      existingProfile?.location,
+      verified.personal.location.value,
+      verified.personal.location.evidence,
+      verified.personal.location.confidence
+    );
+    profileUpdates.location = verified.personal.location.value;
+  }
 
   // Links on profiles table
   if (verified.links.linkedin?.url) {
@@ -209,18 +202,21 @@ export async function stageAndSyncResumeProfile(
     profileUpdates.portfolio_url = verified.links.portfolio.url;
   }
 
+  // Increment profile version to invalidate stale cached job matches
+  const nextProfileVersion = (existingProfile?.profile_version || 1) + 1;
+  profileUpdates.profile_version = nextProfileVersion;
+
   // Execute profile update
   await supabase.from("profiles").update(profileUpdates).eq("id", profileId);
 
-  // 5. Clean up old hallucinated / stale child collections
-  await Promise.all([
-    supabase.from("skills").delete().eq("profile_id", profileId),
-    supabase.from("experiences").delete().eq("profile_id", profileId),
-    supabase.from("educations").delete().eq("profile_id", profileId),
-    supabase.from("projects").delete().eq("profile_id", profileId),
-    supabase.from("certifications").delete().eq("profile_id", profileId),
-    supabase.from("links").delete().eq("profile_id", profileId),
-  ]);
+  // Invalidate old job matches for this user when profile version changes
+  if (existingProfile?.user_id) {
+    await supabase.from("job_matches").delete().eq("user_id", existingProfile.user_id);
+  }
+
+  // 5. Non-destructive sync for child collections:
+  // ONLY replace a section if new verified items were extracted from the resume.
+  // Never delete existing user data if the parser extracted 0 items for that section.
 
   // 6. Insert Verified Skills (flattened from categories, deduplicated)
   const allVerifiedSkills = new Map<string, string>(); // skill_name -> evidence
@@ -233,6 +229,7 @@ export async function stageAndSyncResumeProfile(
   });
 
   if (allVerifiedSkills.size > 0) {
+    await supabase.from("skills").delete().eq("profile_id", profileId);
     const skillRows = Array.from(allVerifiedSkills.entries()).map(([name, ev]) => {
       recordAudit("skill", null, name, ev, "HIGH");
       return {
@@ -245,6 +242,7 @@ export async function stageAndSyncResumeProfile(
 
   // 7. Insert Verified Experiences
   if (verified.experience.length > 0) {
+    await supabase.from("experiences").delete().eq("profile_id", profileId);
     const expRows = verified.experience.map((exp) => {
       const duration = [exp.start_date.value, exp.end_date.value].filter(Boolean).join(" - ");
       const responsibilities = exp.achievements.map((a) => a.value).join("\n• ") || exp.description.value || "";
@@ -270,6 +268,7 @@ export async function stageAndSyncResumeProfile(
 
   // 8. Insert Verified Educations
   if (verified.education.length > 0) {
+    await supabase.from("educations").delete().eq("profile_id", profileId);
     const eduRows = verified.education.map((edu) => {
       const duration = [edu.start_date.value, edu.end_date.value].filter(Boolean).join(" - ");
       let fieldOfStudy = edu.field_of_study.value || "";
@@ -298,6 +297,7 @@ export async function stageAndSyncResumeProfile(
 
   // 9. Insert Verified Projects
   if (verified.projects.length > 0) {
+    await supabase.from("projects").delete().eq("profile_id", profileId);
     const projRows = verified.projects.map((proj) => {
       const techStr = proj.technologies.map((t) => t.value).filter(Boolean).join(", ");
       let desc = proj.description.value || "";
@@ -326,6 +326,7 @@ export async function stageAndSyncResumeProfile(
 
   // 10. Insert Verified Certifications
   if (verified.certifications.length > 0) {
+    await supabase.from("certifications").delete().eq("profile_id", profileId);
     const certRows = verified.certifications.map((cert) => {
       recordAudit("certification", null, cert.certification_name, cert.evidence, cert.confidence);
       return {
@@ -359,6 +360,7 @@ export async function stageAndSyncResumeProfile(
   }
 
   if (linkList.length > 0) {
+    await supabase.from("links").delete().eq("profile_id", profileId);
     const linkRows = linkList.map((l) => {
       recordAudit("link", null, `${l.url_type}: ${l.url}`, l.evidence, "HIGH");
       return {

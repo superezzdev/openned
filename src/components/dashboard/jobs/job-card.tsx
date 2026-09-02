@@ -9,10 +9,13 @@ import {
   Briefcase,
   Wifi,
   CheckCircle,
+  Sparkles,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { JobRecord } from "@/lib/jobs-constants";
+import { formatJobPostingTime, formatPostedTime } from "@/lib/posting-time";
 import { ApplyMethodDialog } from "@/components/dashboard/applications/apply-method-dialog";
 import { ApplicationStatusCard } from "@/components/dashboard/applications/application-status-card";
 import { MissingProfileFieldsDialog } from "@/components/dashboard/applications/missing-profile-fields-dialog";
@@ -28,44 +31,21 @@ interface JobCardProps {
   job: JobRecord;
   onToggleSave: (jobId: string, currentSaved: boolean) => Promise<void>;
   onToggleApplied: (jobId: string, currentApplied: boolean) => Promise<void>;
+  onNotRelevant?: (jobId: string) => Promise<void>;
   application?: ApplicationSummary | null;
 }
 
-// Compute human-readable relative time (e.g., "2h ago", "1d ago", "recently")
-function formatPostedTime(
-  postedAt?: string | null,
-  fetchedAt?: string | null,
-  createdAt?: string | null
-): string {
-  const dateStr = postedAt || fetchedAt || createdAt;
-  if (!dateStr) return "recently";
+export { formatPostedTime };
 
-  try {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    if (isNaN(diffMs) || diffMs < 0) return "recently";
-
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    if (diffMinutes < 60) {
-      return diffMinutes <= 1 ? "just now" : `${diffMinutes}m ago`;
-    }
-
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) {
-      return `${diffHours}h ago`;
-    }
-
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return "1d ago";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return `${Math.floor(diffDays / 30)}mo ago`;
-  } catch {
-    return "recently";
-  }
-}
-
-export function JobCard({ job, onToggleSave, onToggleApplied, application }: JobCardProps) {
+export function JobCard({
+  job,
+  onToggleSave,
+  onToggleApplied,
+  onNotRelevant,
+  application,
+}: JobCardProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [applyDialogOpen, setApplyDialogOpen] = useState(false);
   const [currentApplication, setCurrentApplication] = useState<ApplicationSummary | null>(application || null);
@@ -88,6 +68,17 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
       await onToggleSave(job.id, Boolean(job.saved_status));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleNotRelevant = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onNotRelevant) return;
+    setIsDismissing(true);
+    try {
+      await onNotRelevant(job.id);
+    } finally {
+      setIsDismissing(false);
     }
   };
 
@@ -346,7 +337,11 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
     };
   }, [job.tags, job.title]);
 
-  const postedAgoText = formatPostedTime(job.posted_at, job.fetched_at, job.created_at);
+  const postingTime = useMemo(
+    () => formatJobPostingTime(job.posted_at, job.fetched_at, job.created_at),
+    [job.posted_at, job.fetched_at, job.created_at]
+  );
+  const postedAgoText = postingTime.relativeText;
 
   return (
     <div
@@ -454,26 +449,85 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
                   {locationDisplay}
                 </span>
               </div>
+
+              {/* Job Posting Time (Highlighted) */}
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors cursor-default",
+                  postingTime.isFresh
+                    ? "bg-sky-500/15 border-sky-500/35 text-sky-200 shadow-sm shadow-sky-500/10"
+                    : "bg-white/[0.04] border-white/10 text-white/70 hover:border-white/20"
+                )}
+                title={postingTime.tooltip}
+                suppressHydrationWarning
+              >
+                <Clock className={cn("w-3.5 h-3.5 shrink-0", postingTime.isFresh ? "text-sky-400" : "text-white/50")} />
+                <span>{postingTime.displayPrefix || postingTime.relativeText}</span>
+                {postingTime.timeOnlyText ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-1.5 py-0.5 rounded border border-white/10 text-[11px] tracking-tight">
+                      {postingTime.timeOnlyText}
+                    </span>
+                  </>
+                ) : postingTime.dateOnlyText && postingTime.dateOnlyText !== "Recently" ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono text-white/80 text-[11px]">
+                      {postingTime.dateOnlyText}
+                    </span>
+                  </>
+                ) : null}
+              </div>
             </div>
 
-            {/* Skill / Tag Pills Row */}
-            {visibleTags.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                {visibleTags.map((tag, idx) => (
-                  <span
-                    key={`${tag}-${idx}`}
-                    className="text-xs px-2.5 py-0.5 rounded-lg bg-white/[0.05] border border-white/5 text-white/70 font-medium hover:bg-white/[0.08] transition-colors"
-                  >
-                    {tag}
+            {/* Recommendation Reason Banner */}
+            {((job.reasons && job.reasons.length > 0) || job.explanation) && (
+              <div className="mt-2 p-2 rounded-xl bg-indigo-500/[0.08] border border-indigo-500/20 flex items-start gap-2 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 leading-snug">
+                  <span className="font-semibold text-indigo-300">Why recommended: </span>
+                  <span className="text-white/80">
+                    {job.explanation || job.reasons?.join(" • ")}
                   </span>
-                ))}
-                {remainingCount > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-lg bg-white/[0.03] border border-white/5 text-white/40 font-mono">
-                    +{remainingCount}
-                  </span>
-                )}
+                </div>
               </div>
             )}
+
+            {/* Skills & Requirements Row */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {/* Matched skills */}
+              {(job.matched_skills && job.matched_skills.length > 0
+                ? job.matched_skills
+                : visibleTags
+              ).map((tag, idx) => (
+                <span
+                  key={`match-${tag}-${idx}`}
+                  className="text-xs px-2.5 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-medium inline-flex items-center gap-1"
+                >
+                  <span className="text-[10px]">✓</span>
+                  {tag}
+                </span>
+              ))}
+
+              {/* Missing requirements */}
+              {job.missing_requirements &&
+                job.missing_requirements.slice(0, 2).map((req, idx) => (
+                  <span
+                    key={`miss-${req}-${idx}`}
+                    className="text-xs px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300/80 font-medium"
+                    title={`Missing requirement: ${req}`}
+                  >
+                    Missing: {req}
+                  </span>
+                ))}
+
+              {remainingCount > 0 && !job.matched_skills && (
+                <span className="text-xs px-2 py-0.5 rounded-lg bg-white/[0.03] border border-white/5 text-white/40 font-mono">
+                  +{remainingCount}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -497,10 +551,20 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
             {/* Match Quality & Relative Time */}
             <div className="flex flex-col text-[11px] leading-tight">
               <span className={cn("font-medium", matchQualityColor)}>
-                {matchQualityText}
+                {job.match_level || matchQualityText}
               </span>
-              <span className="text-white/40 text-[10px] mt-0.5">
-                Posted {postedAgoText}
+              <span
+                className="text-white/50 text-[10px] mt-0.5 inline-flex items-center gap-1 cursor-default hover:text-white/80 transition-colors"
+                title={postingTime.tooltip}
+                suppressHydrationWarning
+              >
+                <Clock className={cn("w-2.5 h-2.5 shrink-0", postingTime.isFresh ? "text-sky-400" : "text-white/40")} />
+                <span>Posted {postingTime.relativeText}</span>
+                {postingTime.timeOnlyText && (
+                  <span className="font-mono font-semibold text-sky-300 bg-sky-500/15 px-1 py-0.2 rounded border border-sky-500/25">
+                    {postingTime.timeOnlyText}
+                  </span>
+                )}
               </span>
             </div>
           </div>
@@ -535,24 +599,37 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
               </Button>
             )}
 
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={cn(
-                "h-8 sm:h-9 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium transition-all cursor-pointer w-full",
-                job.saved_status
-                  ? "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
-                  : "bg-white/[0.04] border-white/15 text-white/80 hover:text-white hover:bg-white/10"
+            <div className="flex items-center gap-1.5 w-full">
+              {onNotRelevant && (
+                <button
+                  onClick={handleNotRelevant}
+                  disabled={isDismissing}
+                  className="h-8 sm:h-9 px-2 rounded-xl border border-white/10 bg-white/[0.03] text-white/40 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 text-[11px] font-medium transition-all cursor-pointer flex-1 text-center truncate"
+                  title="Not relevant to my verified profile"
+                >
+                  {isDismissing ? "..." : "Not Relevant"}
+                </button>
               )}
-            >
-              <Bookmark
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
                 className={cn(
-                  "w-3.5 h-3.5",
-                  job.saved_status ? "fill-amber-400 text-amber-400" : "text-white/60"
+                  "h-8 sm:h-9 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium transition-all cursor-pointer flex-1",
+                  job.saved_status
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-white/[0.04] border-white/15 text-white/80 hover:text-white hover:bg-white/10"
                 )}
-              />
-              <span>{job.saved_status ? "Saved" : "Save"}</span>
-            </button>
+              >
+                <Bookmark
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    job.saved_status ? "fill-amber-400 text-amber-400" : "text-white/60"
+                  )}
+                />
+                <span>{job.saved_status ? "Saved" : "Save"}</span>
+              </button>
+            </div>
 
             {/* Application Status Card */}
             {currentApplication && (
@@ -578,6 +655,7 @@ export function JobCard({ job, onToggleSave, onToggleApplied, application }: Job
         jobTitle={job.title}
         companyName={job.company}
         applyUrl={job.apply_url || job.source_url || job.job_url || ""}
+        postedAt={job.posted_at || job.fetched_at || job.created_at}
         onApplicationCreated={handleApplicationCreated}
       />
 

@@ -99,6 +99,12 @@ export interface StrictResumeExtraction {
   achievements: StrictAchievement[];
   certifications: StrictCertification[];
   links: StrictLinks;
+  meta?: {
+    provider: "gemini" | "groq" | "heuristic";
+    model: string;
+    durationMs: number;
+    attempts: number;
+  };
 }
 
 export interface RejectedField {
@@ -109,6 +115,7 @@ export interface RejectedField {
 
 export interface ValidationResult {
   isValid: boolean;
+  isSufficientQuality?: boolean;
   errors: string[];
   warnings: string[];
   rejectedFields: RejectedField[];
