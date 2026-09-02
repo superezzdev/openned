@@ -10,10 +10,12 @@ import {
   Wifi,
   CheckCircle,
   Sparkles,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { JobRecord } from "@/lib/jobs-constants";
+import { formatJobPostingTime, formatPostedTime } from "@/lib/posting-time";
 import { ApplyMethodDialog } from "@/components/dashboard/applications/apply-method-dialog";
 import { ApplicationStatusCard } from "@/components/dashboard/applications/application-status-card";
 import { MissingProfileFieldsDialog } from "@/components/dashboard/applications/missing-profile-fields-dialog";
@@ -33,38 +35,7 @@ interface JobCardProps {
   application?: ApplicationSummary | null;
 }
 
-// Compute human-readable relative time (e.g., "2h ago", "1d ago", "recently")
-function formatPostedTime(
-  postedAt?: string | null,
-  fetchedAt?: string | null,
-  createdAt?: string | null
-): string {
-  const dateStr = postedAt || fetchedAt || createdAt;
-  if (!dateStr) return "recently";
-
-  try {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    if (isNaN(diffMs) || diffMs < 0) return "recently";
-
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    if (diffMinutes < 60) {
-      return diffMinutes <= 1 ? "just now" : `${diffMinutes}m ago`;
-    }
-
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) {
-      return `${diffHours}h ago`;
-    }
-
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return "1d ago";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return `${Math.floor(diffDays / 30)}mo ago`;
-  } catch {
-    return "recently";
-  }
-}
+export { formatPostedTime };
 
 export function JobCard({
   job,
@@ -366,7 +337,11 @@ export function JobCard({
     };
   }, [job.tags, job.title]);
 
-  const postedAgoText = formatPostedTime(job.posted_at, job.fetched_at, job.created_at);
+  const postingTime = useMemo(
+    () => formatJobPostingTime(job.posted_at, job.fetched_at, job.created_at),
+    [job.posted_at, job.fetched_at, job.created_at]
+  );
+  const postedAgoText = postingTime.relativeText;
 
   return (
     <div
@@ -474,6 +449,36 @@ export function JobCard({
                   {locationDisplay}
                 </span>
               </div>
+
+              {/* Job Posting Time (Highlighted) */}
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors cursor-default",
+                  postingTime.isFresh
+                    ? "bg-sky-500/15 border-sky-500/35 text-sky-200 shadow-sm shadow-sky-500/10"
+                    : "bg-white/[0.04] border-white/10 text-white/70 hover:border-white/20"
+                )}
+                title={postingTime.tooltip}
+                suppressHydrationWarning
+              >
+                <Clock className={cn("w-3.5 h-3.5 shrink-0", postingTime.isFresh ? "text-sky-400" : "text-white/50")} />
+                <span>{postingTime.displayPrefix || postingTime.relativeText}</span>
+                {postingTime.timeOnlyText ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-1.5 py-0.5 rounded border border-white/10 text-[11px] tracking-tight">
+                      {postingTime.timeOnlyText}
+                    </span>
+                  </>
+                ) : postingTime.dateOnlyText && postingTime.dateOnlyText !== "Recently" ? (
+                  <>
+                    <span className="text-white/30">•</span>
+                    <span className="font-mono text-white/80 text-[11px]">
+                      {postingTime.dateOnlyText}
+                    </span>
+                  </>
+                ) : null}
+              </div>
             </div>
 
             {/* Recommendation Reason Banner */}
@@ -548,8 +553,18 @@ export function JobCard({
               <span className={cn("font-medium", matchQualityColor)}>
                 {job.match_level || matchQualityText}
               </span>
-              <span className="text-white/40 text-[10px] mt-0.5">
-                Posted {postedAgoText}
+              <span
+                className="text-white/50 text-[10px] mt-0.5 inline-flex items-center gap-1 cursor-default hover:text-white/80 transition-colors"
+                title={postingTime.tooltip}
+                suppressHydrationWarning
+              >
+                <Clock className={cn("w-2.5 h-2.5 shrink-0", postingTime.isFresh ? "text-sky-400" : "text-white/40")} />
+                <span>Posted {postingTime.relativeText}</span>
+                {postingTime.timeOnlyText && (
+                  <span className="font-mono font-semibold text-sky-300 bg-sky-500/15 px-1 py-0.2 rounded border border-sky-500/25">
+                    {postingTime.timeOnlyText}
+                  </span>
+                )}
               </span>
             </div>
           </div>
@@ -640,6 +655,7 @@ export function JobCard({
         jobTitle={job.title}
         companyName={job.company}
         applyUrl={job.apply_url || job.source_url || job.job_url || ""}
+        postedAt={job.posted_at || job.fetched_at || job.created_at}
         onApplicationCreated={handleApplicationCreated}
       />
 
