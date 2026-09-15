@@ -8,15 +8,14 @@ import { useDashboard } from "./dashboard-context";
 import { SignOutButton } from "./signout-button";
 import {
   Briefcase,
+  Bookmark,
   FileText,
   User,
   ListChecks,
-  CreditCard,
   Settings,
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Plus,
 } from "lucide-react";
 import {
   Tooltip,
@@ -35,21 +34,11 @@ interface UserProfile {
 
 interface DashboardSidebarProps {
   user: UserProfile;
-  credits?: {
-    used: number;
-    total: number;
-    plan: string;
-  };
   initialActiveApplicationsCount?: number;
 }
 
 export function DashboardSidebar({
   user,
-  credits = {
-    used: 160,
-    total: 500,
-    plan: "Pro Tier",
-  },
   initialActiveApplicationsCount = 0,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
@@ -59,6 +48,7 @@ export function DashboardSidebar({
   const [activeCount, setActiveCount] = React.useState<number>(
     initialActiveApplicationsCount
   );
+  const [savedCount, setSavedCount] = React.useState<number>(0);
 
   // Sync state if prop changes
   React.useEffect(() => {
@@ -83,6 +73,22 @@ export function DashboardSidebar({
     }
   }, []);
 
+  const fetchSavedCount = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/jobs/saved-count", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.count === "number") {
+          setSavedCount(data.count);
+        }
+      }
+    } catch {
+      // Ignore background network errors
+    }
+  }, []);
+
   // Listen to application update events dispatched from dashboard actions
   React.useEffect(() => {
     const handleUpdate = () => {
@@ -95,10 +101,23 @@ export function DashboardSidebar({
     };
   }, [fetchActiveCount]);
 
+  // Listen to saved jobs update events
+  React.useEffect(() => {
+    const handleSavedUpdate = () => {
+      fetchSavedCount();
+    };
+
+    window.addEventListener("saved-jobs-updated", handleSavedUpdate);
+    return () => {
+      window.removeEventListener("saved-jobs-updated", handleSavedUpdate);
+    };
+  }, [fetchSavedCount]);
+
   // Re-fetch when navigating to or from pages
   React.useEffect(() => {
     fetchActiveCount();
-  }, [pathname, fetchActiveCount]);
+    fetchSavedCount();
+  }, [pathname, fetchActiveCount, fetchSavedCount]);
 
   // If there are active applications, poll periodically to clear badge when they complete
   React.useEffect(() => {
@@ -107,12 +126,6 @@ export function DashboardSidebar({
     return () => clearInterval(interval);
   }, [activeCount, fetchActiveCount]);
 
-  const remainingCredits = Math.max(0, credits.total - credits.used);
-  const creditPercentage = Math.min(
-    100,
-    Math.round((remainingCredits / credits.total) * 100)
-  );
-
   const mainNavItems = [
     {
       title: "Jobs",
@@ -120,6 +133,20 @@ export function DashboardSidebar({
       icon: Briefcase,
       badge: "New",
       description: "Explore curated job matches",
+    },
+    {
+      title: "Saved Jobs",
+      href: "/dashboard/saved-jobs",
+      icon: Bookmark,
+      badge: savedCount > 0 ? `${savedCount}` : undefined,
+      description: "Your bookmarked job opportunities",
+    },
+    {
+      title: "Applications",
+      href: "/dashboard/applications",
+      icon: ListChecks,
+      badge: activeCount > 0 ? `${activeCount} Active` : undefined,
+      description: "Track submission pipeline",
     },
     {
       title: "Resume",
@@ -134,13 +161,6 @@ export function DashboardSidebar({
       description: "Personal and career background",
     },
     {
-      title: "Applications",
-      href: "/dashboard/applications",
-      icon: ListChecks,
-      badge: activeCount > 0 ? `${activeCount} Active` : undefined,
-      description: "Track submission pipeline",
-    },
-    {
       title: "Job Ingestion",
       href: "/dashboard/admin/sources",
       icon: Sparkles,
@@ -150,12 +170,6 @@ export function DashboardSidebar({
   ];
 
   const footerNavItems = [
-    {
-      title: "Billing / Credits",
-      href: "/dashboard/billing",
-      icon: CreditCard,
-      description: "Subscription and AI credits",
-    },
     {
       title: "Profile Settings",
       href: "/dashboard/settings",
@@ -331,93 +345,8 @@ export function DashboardSidebar({
         </div>
 
         {/* Bottom / Footer Section */}
-        <div className="space-y-5 pt-5 border-t border-white/10">
-          {/* Proper Credits Display Section */}
-          {!isCollapsed ? (
-            <div className="bg-gradient-to-b from-white/[0.07] to-white/[0.02] border border-white/10 rounded-2xl p-4 space-y-3.5 relative overflow-hidden backdrop-blur-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>AI Credits</span>
-                </div>
-                <Link
-                  href="/dashboard/billing"
-                  className="text-xs font-medium text-white/60 hover:text-white flex items-center gap-1 transition-colors px-2 py-0.5 rounded-md hover:bg-white/10"
-                >
-                  <span>Buy</span>
-                  <Plus className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-
-              {/* Progress Bar & Numeric Indicator */}
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between font-mono">
-                  <span className="font-bold text-white text-base">
-                    {remainingCredits}
-                  </span>
-                  <span className="text-white/45 text-xs">
-                    / {credits.total} left
-                  </span>
-                </div>
-
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-500",
-                      creditPercentage > 40
-                        ? "bg-gradient-to-r from-emerald-400 to-teal-300"
-                        : creditPercentage > 15
-                        ? "bg-gradient-to-r from-amber-400 to-orange-400"
-                        : "bg-gradient-to-r from-red-500 to-rose-400"
-                    )}
-                    style={{ width: `${creditPercentage}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-white/45 pt-0.5">
-                <span className="truncate">{credits.plan}</span>
-                <span className="text-emerald-400/90 font-mono font-medium">
-                  {creditPercentage}%
-                </span>
-              </div>
-            </div>
-          ) : (
-            /* Collapsed credits compact meter */
-            <div className="flex justify-center">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Link
-                      href="/dashboard/billing"
-                      className="w-11 h-11 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 flex flex-col items-center justify-center text-amber-400 transition-colors group"
-                    >
-                      <Sparkles className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
-                      <span className="text-[10px] font-mono font-bold text-white/80 mt-0.5">
-                        {remainingCredits}
-                      </span>
-                    </Link>
-                  }
-                />
-                <TooltipContent
-                  side="right"
-                  sideOffset={12}
-                  className="bg-[#181818] border border-white/15 text-white"
-                >
-                  <div className="space-y-1">
-                    <p className="font-semibold text-xs">
-                      {remainingCredits} / {credits.total} Credits Available
-                    </p>
-                    <p className="text-[10px] text-white/50">
-                      Click to manage billing & add credits
-                    </p>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-
-          {/* Secondary Nav (Billing & Settings) */}
+        <div className="space-y-4 pt-4 border-t border-white/10">
+          {/* Secondary Nav (Settings) */}
           <div className="space-y-2">
             {!isCollapsed && (
               <p className="px-3.5 text-xs font-semibold uppercase tracking-wider text-white/40 mb-2 font-mono">
