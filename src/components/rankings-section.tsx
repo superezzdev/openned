@@ -15,7 +15,7 @@ export function RankingsSection() {
   const githubRef = useRef<HTMLDivElement>(null);
 
   return (
-    <section className="relative min-h-screen w-full bg-[#0A0A0A] text-[#F5F5F5] overflow-hidden py-24 lg:py-32 flex flex-col items-center justify-center">
+    <section id="rankings" className="relative min-h-screen w-full bg-[#0A0A0A] text-[#F5F5F5] overflow-hidden py-24 lg:py-32 flex flex-col items-center justify-center">
       {/* Background Effects */}
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.1)_0%,transparent_50%)]" />
       <div className="absolute inset-0 z-0 opacity-5 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />

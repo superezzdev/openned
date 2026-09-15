@@ -67,30 +67,39 @@ export function Navbar() {
         </Link>
 
         {/* Center/Right: Nav Links */}
-        <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-          {["Product", "How it works"].map((item) => (
-            <Link
-              key={item}
-              href="#"
-              className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors"
-            >
-              {item}
-            </Link>
-          ))}
+        <nav className="hidden md:flex items-center gap-7 absolute left-1/2 -translate-x-1/2">
           <Link
-            href="#"
-            className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors flex items-center gap-2 group"
-          >
-            Rankings
-            <span className="text-[10px] uppercase tracking-wider bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full text-white/40 group-hover:text-white/60 transition-colors">
-              Coming soon
-            </span>
-          </Link>
-          <Link
-            href="#"
+            href="#why-openned"
             className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors"
           >
-            Pricing
+            Why Openned
+          </Link>
+          <Link
+            href="#how-it-works"
+            className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors"
+          >
+            How It Works
+          </Link>
+          <Link
+            href="#features"
+            className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors"
+          >
+            Features
+          </Link>
+          <Link
+            href="#faq"
+            className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors"
+          >
+            FAQ
+          </Link>
+          <Link
+            href="#rankings"
+            className="text-sm text-white/60 hover:text-[#f5f5f5] transition-colors flex items-center gap-1.5 group"
+          >
+            Rankings
+            <span className="text-[9px] uppercase tracking-wider bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full text-white/40 group-hover:text-white/60 transition-colors">
+              Soon
+            </span>
           </Link>
         </nav>
 
