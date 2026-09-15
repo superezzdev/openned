@@ -49,19 +49,52 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Send event to Inngest — returns immediately
-    await inngest.send({
-      name: "application/start",
-      data: {
-        application_id: id,
-        user_id: user.id,
-      },
-    });
+    // Try sending event to Inngest — returns immediately
+    let inngestDispatched = false;
+    try {
+      await inngest.send({
+        name: "application/start",
+        data: {
+          application_id: id,
+          user_id: user.id,
+        },
+      });
+      inngestDispatched = true;
+    } catch (inngestErr: any) {
+      console.warn(
+        `[POST /api/applications/:id/start] Inngest send failed (${inngestErr?.message}). Falling back to direct background worker.`,
+      );
+    }
+
+    // Direct background execution fallback if Inngest daemon was offline/failed
+    if (!inngestDispatched) {
+      (async () => {
+        try {
+          const { acquireApplicationLock, releaseApplicationLock } = await import(
+            "@/lib/applications/application-locking"
+          );
+          const { runApplicationAutomation } = await import(
+            "@/lib/applications/application-orchestrator"
+          );
+          const workerId = await acquireApplicationLock(id);
+          if (workerId) {
+            try {
+              await runApplicationAutomation(id, workerId);
+            } finally {
+              await releaseApplicationLock(id, workerId);
+            }
+          }
+        } catch (workerErr) {
+          console.error(`[POST /api/applications/:id/start] Direct execution error:`, workerErr);
+        }
+      })().catch(() => {});
+    }
 
     return NextResponse.json({
       queued: true,
       application_id: id,
-      message: "Application automation has been queued. You can navigate away.",
+      inngest: inngestDispatched,
+      message: "Application automation has started. You can track progress or navigate away.",
     });
   } catch (err: any) {
     console.error("[POST /api/applications/:id/start]", err);

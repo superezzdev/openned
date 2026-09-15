@@ -274,8 +274,34 @@ async function executeWorkflow(
     // Detect form fields through provider abstraction
     let detectedFields = await detectApplicationFields(provider, page);
 
-    // If 0 fields found, check if we landed on a job description page with an "Apply" button or link
-    if (detectedFields.length === 0) {
+    const isPlausibleForm = (fields: DetectedField[]): boolean => {
+      if (fields.length === 0) return false;
+      if (
+        fields.some(
+          (f) =>
+            f.type === "file" ||
+            f.field_id.includes("resume") ||
+            /resume|cv|joindre/i.test(f.label)
+        )
+      )
+        return true;
+      if (
+        fields.some(
+          (f) =>
+            /name|email|phone|first|last/i.test(f.field_id) ||
+            /name|email|phone|first|last|prénom|nom/i.test(f.label)
+        )
+      )
+        return true;
+      // An isolated field that is unknown and has no label is never a job application form
+      if (fields.length === 1 && (fields[0].field_id === "unknown_field" || fields[0].label === "Unknown Field")) {
+        return false;
+      }
+      return fields.length >= 2;
+    };
+
+    // If 0 fields found or form is not plausible, check if we landed on a job description page with an "Apply" button or link
+    if (!isPlausibleForm(detectedFields)) {
       logApplicationEvent("searching_apply_button", {
         application_id: applicationId,
         current_url: await provider.getCurrentUrl(page),
@@ -312,8 +338,13 @@ async function executeWorkflow(
               )
               .catch(() => {});
             await provider.waitForTimeout(page, 1500);
-            detectedFields = await detectApplicationFields(provider, page);
-            if (detectedFields.length > 0) break;
+            const refetchedFields = await detectApplicationFields(provider, page);
+            if (isPlausibleForm(refetchedFields)) {
+              detectedFields = refetchedFields;
+              break;
+            } else if (refetchedFields.length > detectedFields.length) {
+              detectedFields = refetchedFields;
+            }
           }
         } catch {}
       }
@@ -484,6 +515,14 @@ async function executeWorkflow(
         return false;
       }
       if (f.type === "file" || f.mapping.mapped_profile_key === "resume") return false;
+
+      // CRITICAL: Filter out phantom/dummy inputs that have no label and are not required
+      const isPhantom =
+        (!f.label || f.label === "Unknown Field" || f.field_id === "unknown_field") && !f.required;
+      if (isPhantom) {
+        return false;
+      }
+
       return (
         f.required ||
         f.question_type === QuestionType.OPEN_ENDED ||

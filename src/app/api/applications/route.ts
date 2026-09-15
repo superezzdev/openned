@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
         id, job_id, status, source, platform, apply_url, missing_fields,
         failure_code, error_message, submitted_at, created_at, updated_at,
         canonical_jobs (
-          title, company_name, company_logo, job_url
+          title, company_name, company_logo, job_url, apply_url
         )
       `)
       .eq("user_id", user.id)
@@ -158,3 +158,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status");
+
+    const adminClient = getAdminClient();
+    let query = adminClient
+      .from("applications")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (status) {
+      // If status is FAILED, also include CANCELLED if user wants to clear all failed/cancelled
+      const upperStatus = status.toUpperCase();
+      if (upperStatus === "FAILED") {
+        query = query.in("status", [ApplicationStatus.FAILED, ApplicationStatus.CANCELLED]);
+      } else {
+        query = query.eq("status", upperStatus);
+      }
+    }
+
+    const { error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+  }
+}
+

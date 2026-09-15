@@ -47,11 +47,6 @@ export default async function DashboardLayout({
             email: user.email,
             displayName,
           }}
-          credits={{
-            used: 160,
-            total: 500,
-            plan: "Pro Tier",
-          }}
           initialActiveApplicationsCount={activeApplicationsCount}
         />
 

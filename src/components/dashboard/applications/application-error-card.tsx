@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
+import { AlertCircle, RefreshCw, ExternalLink, Trash2 } from "lucide-react";
 import { FailureCode, FAILURE_CODE_MESSAGES } from "@/lib/applications/types";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,7 @@ interface ApplicationErrorCardProps {
   errorMessage?: string | null;
   applyUrl?: string;
   onRetry?: () => void;
+  onDelete?: () => void;
   className?: string;
 }
 
@@ -18,6 +19,7 @@ export function ApplicationErrorCard({
   errorMessage,
   applyUrl,
   onRetry,
+  onDelete,
   className = "",
 }: ApplicationErrorCardProps) {
   const code = failureCode as FailureCode | null;
@@ -42,12 +44,12 @@ export function ApplicationErrorCard({
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap sm:flex-nowrap">
         {canRetry && onRetry && (
           <Button
             onClick={onRetry}
             size="sm"
-            className="flex-1 h-8 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/25 text-xs font-semibold"
+            className="flex-1 h-8 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/25 text-xs font-semibold cursor-pointer"
           >
             <RefreshCw className="w-3 h-3 mr-1.5" />
             Retry
@@ -57,10 +59,22 @@ export function ApplicationErrorCard({
           <Button
             size="sm"
             onClick={() => window.open(applyUrl, "_blank", "noopener,noreferrer")}
-            className={`${canRetry && onRetry ? "flex-1" : "w-full"} h-8 bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 text-xs font-semibold`}
+            className={`${canRetry && onRetry ? "flex-1" : "w-full"} h-8 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 text-xs font-semibold cursor-pointer`}
           >
             <ExternalLink className="w-3 h-3 mr-1.5" />
             Apply Manually
+          </Button>
+        )}
+        {onDelete && (
+          <Button
+            size="sm"
+            onClick={onDelete}
+            variant="outline"
+            className="h-8 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 text-xs font-semibold shrink-0 cursor-pointer"
+            title="Delete failed application"
+          >
+            <Trash2 className="w-3 h-3 mr-1.5" />
+            Delete
           </Button>
         )}
       </div>

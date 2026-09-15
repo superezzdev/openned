@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, Eye, Send, AlertCircle, User, Building, Sparkles, PenLine } from "lucide-react";
+import { CheckCircle2, Loader2, Eye, Send, AlertCircle, User, Building, Sparkles, PenLine, ExternalLink } from "lucide-react";
 import { ApplicationStatus, MissingFieldInfo } from "@/lib/applications/types";
 import { MissingProfileFieldsDialog } from "./missing-profile-fields-dialog";
 
@@ -23,6 +23,7 @@ interface ApplicationReviewDialogProps {
   applicationId: string;
   jobTitle: string;
   companyName: string;
+  jobUrl?: string;
   platform?: string;
   fields: ReviewField[];
   onConfirm?: () => void;
@@ -37,6 +38,7 @@ export function ApplicationReviewDialog({
   applicationId,
   jobTitle,
   companyName,
+  jobUrl,
   platform,
   fields,
   onConfirm,
@@ -189,8 +191,21 @@ export function ApplicationReviewDialog({
             </div>
             <DialogDescription className="text-white/50 text-sm mt-1">
               Review the information the AI agent will submit for{" "}
-              <span className="text-white/70 font-medium">{jobTitle}</span> at{" "}
-              <span className="text-white/70 font-medium">{companyName}</span>.
+              {jobUrl ? (
+                <a
+                  href={jobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white/80 hover:text-white underline inline-flex items-center gap-1 font-medium transition-colors"
+                  title="Open job posting on employer site"
+                >
+                  <span>{jobTitle}</span>
+                  <ExternalLink className="w-3 h-3 text-white/40 inline" />
+                </a>
+              ) : (
+                <span className="text-white/70 font-medium">{jobTitle}</span>
+              )}{" "}
+              at <span className="text-white/70 font-medium">{companyName}</span>.
             </DialogDescription>
           </DialogHeader>
 

@@ -483,6 +483,8 @@ export async function getAccuratePlatformCounts(supabaseClient: any): Promise<Re
   }
 
   try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
     const results = await Promise.all(
       SUPPORTED_PLATFORMS.map((p) =>
         supabaseClient
@@ -490,6 +492,7 @@ export async function getAccuratePlatformCounts(supabaseClient: any): Promise<Re
           .select("*", { count: "exact", head: true })
           .or(getSourceFilter(p.id))
           .eq("active", true)
+          .or(`posted_at.gte.${thirtyDaysAgo},and(posted_at.is.null,created_at.gte.${thirtyDaysAgo})`)
       )
     );
 
@@ -567,14 +570,17 @@ export async function fetchCachedOrFreshJobs(
 
   const targetLocation = options.location || userCareerProfile.locations[0] || "Remote";
 
-  // 2. 6-Hour Cache Validation: Check if canonical jobs have fresh data in the DB
+  // 2. Freshness & Cache Validation
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_MS).toISOString();
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
   const now = new Date();
 
   const { data: latestJobRow } = await supabase
     .from("canonical_jobs")
-    .select("scraped_at, created_at")
+    .select("scraped_at, created_at, posted_at")
     .eq("active", true)
+    .gte("posted_at", thirtyDaysAgo)
     .order("scraped_at", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
@@ -609,7 +615,7 @@ export async function fetchCachedOrFreshJobs(
     }
   }
 
-  // 3. Fast Parallel Fetch: Query user interactions, platform-balanced canonical jobs, and global counts
+  // 3. Fast Parallel Fetch: Query user interactions, platform-balanced fresh canonical jobs, and global counts
   const isSpecificPlatform = Boolean(options.platform && options.platform !== "all");
 
   const [interactionsRes, jobsData, accurateCounts] = await Promise.all([
@@ -623,6 +629,7 @@ export async function fetchCachedOrFreshJobs(
           .select("*")
           .or(getSourceFilter(options.platform!))
           .eq("active", true)
+          .or(`posted_at.gte.${thirtyDaysAgo},and(posted_at.is.null,created_at.gte.${thirtyDaysAgo})`)
           .order("posted_at", { ascending: false, nullsFirst: false })
           .limit(100)
           .then((r: any) => r.data || [])
@@ -633,6 +640,7 @@ export async function fetchCachedOrFreshJobs(
               .select("*")
               .or(getSourceFilter(p.id))
               .eq("active", true)
+              .or(`posted_at.gte.${thirtyDaysAgo},and(posted_at.is.null,created_at.gte.${thirtyDaysAgo})`)
               .order("posted_at", { ascending: false, nullsFirst: false })
               .limit(15)
           )
@@ -668,11 +676,11 @@ export async function fetchCachedOrFreshJobs(
 
   let canonicalJobs: Array<Record<string, any>> = jobsData || [];
 
-  // Fallback: If specific platform had 0 jobs in DB, trigger targeted search
-  if (isSpecificPlatform && canonicalJobs.length === 0) {
+  // Fallback: If specific platform or overall results had fewer than 5 fresh jobs, trigger targeted live search
+  if ((isSpecificPlatform && canonicalJobs.length < 5) || canonicalJobs.length === 0) {
     try {
-      const targetP = options.platform!.toLowerCase();
-      console.log(`[jobs-service] No jobs found for platform ${targetP}. Running targeted live search...`);
+      const targetP = options.platform ? options.platform.toLowerCase() : undefined;
+      console.log(`[jobs-service] Low fresh job count (${canonicalJobs.length}). Running live search...`);
       const searchRes = await jobSearchService.search({
         query: targetQuery,
         location: targetLocation,
@@ -928,3 +936,232 @@ export async function fetchCachedOrFreshJobs(
     platformCounts,
   };
 }
+
+/**
+ * Fast count of saved jobs for the user
+ */
+export async function getSavedJobsCount(userId: string): Promise<number> {
+  let supabase: any;
+  try {
+    supabase = await createServerClient();
+  } catch {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "placeholder-key";
+    supabase = createSupabaseClient(url, key);
+  }
+
+  const { count, error } = await supabase
+    .from("user_job_interactions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("saved_status", true);
+
+  if (error) {
+    console.error("Error fetching saved jobs count:", error);
+    return 0;
+  }
+  return count || 0;
+}
+
+/**
+ * Fetches all jobs saved by the user, cross-referenced with latest application statuses
+ */
+export async function fetchSavedJobs(userId: string): Promise<{
+  jobs: JobRecord[];
+  applicationMap: Record<string, { id: string; status: any }>;
+}> {
+  let supabase: any;
+  try {
+    supabase = await createServerClient();
+  } catch {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "placeholder-key";
+    supabase = createSupabaseClient(url, key);
+  }
+
+  // 1. Fetch saved interactions for this user
+  const { data: savedInteractions, error: interError } = await supabase
+    .from("user_job_interactions")
+    .select("canonical_job_id, saved_status, applied_status, applied_at, updated_at")
+    .eq("user_id", userId)
+    .eq("saved_status", true)
+    .order("updated_at", { ascending: false });
+
+  if (interError) {
+    console.error("Error fetching saved interactions:", interError);
+  }
+
+  // 2. Fetch all user applications to guarantee accurate live status
+  const { data: apps } = await supabase
+    .from("applications")
+    .select("id, job_id, status, submitted_at, updated_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  const applicationMap: Record<string, { id: string; status: any }> = {};
+  if (apps) {
+    for (const app of apps) {
+      if (app.job_id && !applicationMap[app.job_id]) {
+        applicationMap[app.job_id] = {
+          id: app.id,
+          status: app.status,
+        };
+      }
+    }
+  }
+
+  const jobIds = (savedInteractions || [])
+    .map((si: any) => si.canonical_job_id)
+    .filter(Boolean);
+
+  let canonicalJobsMap = new Map<string, any>();
+  if (jobIds.length > 0) {
+    const { data: cJobs } = await supabase
+      .from("canonical_jobs")
+      .select("*")
+      .in("id", jobIds);
+
+    if (cJobs) {
+      for (const j of cJobs) {
+        canonicalJobsMap.set(j.id, j);
+      }
+    }
+  }
+
+  // 3. User profile scoring for personalized match quality & tags
+  let userCareerProfile: any = null;
+  try {
+    const fullProfile = await getFullProfileData(userId);
+    userCareerProfile = buildUserCareerProfile({
+      userId,
+      profile: fullProfile.profile,
+      skills: fullProfile.rawSkills || [],
+      experiences: fullProfile.experiences || [],
+      educations: fullProfile.educations || [],
+      projects: fullProfile.projects || [],
+    });
+  } catch (e) {
+    console.warn("Could not load user career profile for saved jobs scoring:", e);
+  }
+
+  const transformedJobs: JobRecord[] = [];
+
+  for (const si of savedInteractions || []) {
+    const cj = canonicalJobsMap.get(si.canonical_job_id);
+    if (!cj) continue;
+
+    const normJob: NormalizedJob =
+      cj.normalized_job_data && typeof cj.normalized_job_data === "object"
+        ? (cj.normalized_job_data as NormalizedJob)
+        : normalizeJob(cj as any);
+
+    let scoreResult = {
+      score: 85,
+      match_level: "Strong",
+      reasons: ["Saved by you"],
+      missing_requirements: [] as string[],
+      matched_skills: [] as string[],
+      explanation: "Bookmarked opportunity saved to your collection.",
+      experience_match: 85,
+    };
+
+    if (userCareerProfile) {
+      try {
+        const scored = scoreJob(userCareerProfile, normJob, si);
+        scoreResult = {
+          score: scored.score,
+          match_level: scored.match_level,
+          reasons: scored.reasons,
+          missing_requirements: scored.missing_requirements,
+          matched_skills: scored.matched_skills,
+          explanation: scored.explanation || "Bookmarked opportunity saved to your collection.",
+          experience_match: scored.experience_match,
+        };
+      } catch {}
+    }
+
+    let salaryDisplay = normJob.salary;
+    const salaryMin = cj.salary_min || normJob.salary_min || null;
+    const salaryMax = cj.salary_max || normJob.salary_max || null;
+    if (salaryMin && salaryMax) {
+      const curr = cj.salary_currency === "USD" ? "$" : (cj.salary_currency || "$");
+      salaryDisplay = `${curr}${Math.round(salaryMin / 1000)}k - ${curr}${Math.round(salaryMax / 1000)}k`;
+    }
+
+    const platform = normalizeSourceToPlatform(cj.source);
+    const displayTags =
+      scoreResult.matched_skills.length > 0
+        ? scoreResult.matched_skills
+        : normJob.required_skills?.slice(0, 4) || [];
+
+    const app = applicationMap[cj.id];
+    const isApplied = Boolean(si.applied_status || app);
+
+    transformedJobs.push({
+      id: cj.id,
+      user_id: userId,
+      platform,
+      title: cj.title,
+      company: cj.company_name,
+      company_logo: cj.company_logo,
+      location: cj.location || normJob.location,
+      country: cj.country || normJob.country,
+      remote_type: cj.remote_type || normJob.remote_type,
+      salary: salaryDisplay,
+      salary_min: salaryMin,
+      salary_max: salaryMax,
+      salary_currency: cj.salary_currency || "USD",
+      job_type: cj.employment_type || normJob.employment_type,
+      experience_level: scoreResult.experience_match >= 85 ? "Entry Level" : "Mid Level",
+      description: cj.description || `Position at ${cj.company_name}`,
+      tags: displayTags,
+      match_score: scoreResult.score,
+      job_url: cj.job_url,
+      apply_url: cj.apply_url || cj.job_url,
+      source_url: cj.apply_url || cj.job_url,
+      applied_status: isApplied,
+      saved_status: true,
+      posted_at: cj.posted_at || null,
+      fetched_at: cj.scraped_at || cj.created_at || new Date().toISOString(),
+      created_at: cj.created_at || new Date().toISOString(),
+      match_level: scoreResult.match_level,
+      reasons: scoreResult.reasons,
+      missing_requirements: scoreResult.missing_requirements,
+      matched_skills: scoreResult.matched_skills,
+      explanation: scoreResult.explanation,
+    });
+  }
+
+  // 4. Legacy fallback: check jobs table for saved jobs
+  const { data: legacyJobs } = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("saved_status", true);
+
+  if (legacyJobs) {
+    const existingIds = new Set(transformedJobs.map((j) => j.id));
+    for (const lj of legacyJobs) {
+      if (!existingIds.has(lj.id)) {
+        const app = applicationMap[lj.id];
+        transformedJobs.push({
+          ...lj,
+          saved_status: true,
+          applied_status: Boolean(lj.applied_status || app),
+        });
+      }
+    }
+  }
+
+  return {
+    jobs: transformedJobs,
+    applicationMap,
+  };
+}
+

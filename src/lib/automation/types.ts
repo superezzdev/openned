@@ -42,6 +42,7 @@ export enum FallbackReason {
  */
 export interface PageHandle {
   readonly rawPage: any;
+  activeFrame?: any;
   url(): string;
   title(): Promise<string>;
 }
@@ -85,7 +86,7 @@ export interface BrowserProvider {
     session: BrowserSession,
     url: string,
     options?: {
-      waitUntil?: "load" | "domcontentloaded" | "networkidle";
+      waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit";
       timeout?: number;
     }
   ): Promise<PageHandle>;

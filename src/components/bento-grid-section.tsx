@@ -332,7 +332,7 @@ function RankingsCard() {
 
 export function BentoGridSection() {
   return (
-    <section className="relative w-full py-24 md:py-32 bg-[#0A0A0A] overflow-hidden">
+    <section id="features" className="relative w-full py-24 md:py-32 bg-[#0A0A0A] overflow-hidden">
       <div className="container mx-auto px-6 max-w-6xl">
         
         <motion.div 
@@ -342,12 +342,18 @@ export function BentoGridSection() {
           viewport={{ once: true, margin: "-100px" }}
           className="mb-16 md:mb-24"
         >
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-md mb-6">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" />
+            <span className="text-xs font-medium text-white/70 uppercase tracking-wider">
+              Core Capabilities
+            </span>
+          </div>
           <h2 className="font-serif text-5xl md:text-6xl lg:text-[72px] leading-tight text-white tracking-tight mb-6">
             Everything you need. <br className="hidden md:block"/>
             <span className="text-white/40 italic">Nothing you don&apos;t.</span>
           </h2>
-          <p className="text-white/50 max-w-lg text-lg leading-relaxed">
-            A unified gateway for your job search journey. Built for speed, precision, and zero friction.
+          <p className="text-white/50 max-w-xl text-lg leading-relaxed">
+            A unified command center for your entire job hunt. From automated direct ATS sourcing to smart matching and live tracking — designed for maximum callback rate.
           </p>
         </motion.div>
 

@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Sparkles,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,11 @@ import { ApplyMethodDialog } from "@/components/dashboard/applications/apply-met
 import { ApplicationStatusCard } from "@/components/dashboard/applications/application-status-card";
 import { MissingProfileFieldsDialog } from "@/components/dashboard/applications/missing-profile-fields-dialog";
 import { ApplicationReviewDialog } from "@/components/dashboard/applications/application-review-dialog";
-import { ApplicationStatus, MissingFieldInfo } from "@/lib/applications/types";
+import {
+  ApplicationStatus,
+  MissingFieldInfo,
+  ACTIVE_APPLICATION_STATUSES,
+} from "@/lib/applications/types";
 
 interface ApplicationSummary {
   id: string;
@@ -66,6 +71,9 @@ export function JobCard({
     setIsSaving(true);
     try {
       await onToggleSave(job.id, Boolean(job.saved_status));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("saved-jobs-updated"));
+      }
     } finally {
       setIsSaving(false);
     }
@@ -408,11 +416,44 @@ export function JobCard({
                   <span className="hidden sm:inline">{platformLabel}</span>
                 </span>
 
-                {/* Applied Badge */}
-                {job.applied_status && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/25 inline-flex items-center gap-1 shrink-0">
-                    <CheckCircle className="w-2.5 h-2.5" />
-                    Applied
+                {/* Applied / Application Status Badge */}
+                {(job.applied_status || currentApplication) && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-mono px-2 py-0.5 rounded-full border inline-flex items-center gap-1 shrink-0",
+                      currentApplication?.status === ApplicationStatus.SUBMITTED
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
+                        : currentApplication && ACTIVE_APPLICATION_STATUSES.includes(currentApplication.status)
+                        ? "bg-violet-500/10 text-violet-300 border-violet-500/25"
+                        : currentApplication?.status === ApplicationStatus.MISSING_PROFILE_INFO ||
+                          currentApplication?.status === ApplicationStatus.AWAITING_USER_INPUT
+                        ? "bg-amber-500/10 text-amber-300 border-amber-500/25"
+                        : currentApplication?.status === ApplicationStatus.AWAITING_USER_REVIEW
+                        ? "bg-sky-500/10 text-sky-300 border-sky-500/25"
+                        : "bg-blue-500/10 text-blue-400 border-blue-500/25"
+                    )}
+                  >
+                    {currentApplication?.status === ApplicationStatus.SUBMITTED ? (
+                      <>
+                        <CheckCircle className="w-2.5 h-2.5" />
+                        Submitted
+                      </>
+                    ) : currentApplication && ACTIVE_APPLICATION_STATUSES.includes(currentApplication.status) ? (
+                      <>
+                        <Loader2 className="w-2.5 h-2.5 animate-spin text-violet-400" />
+                        In Progress
+                      </>
+                    ) : currentApplication?.status === ApplicationStatus.MISSING_PROFILE_INFO ||
+                      currentApplication?.status === ApplicationStatus.AWAITING_USER_INPUT ? (
+                      <>Action Required</>
+                    ) : currentApplication?.status === ApplicationStatus.AWAITING_USER_REVIEW ? (
+                      <>Review Required</>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-2.5 h-2.5" />
+                        Applied
+                      </>
+                    )}
                   </span>
                 )}
               </div>
@@ -576,7 +617,13 @@ export function JobCard({
                 <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Submitted</span>
               </div>
-            ) : currentApplication?.status === ApplicationStatus.MISSING_PROFILE_INFO || currentApplication?.status === ApplicationStatus.AWAITING_USER_INPUT ? (
+            ) : currentApplication && ACTIVE_APPLICATION_STATUSES.includes(currentApplication.status) ? (
+              <div className="h-9 sm:h-10 px-3 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 w-full">
+                <Loader2 className="w-4 h-4 text-violet-400 animate-spin shrink-0" />
+                <span>In Progress</span>
+              </div>
+            ) : currentApplication?.status === ApplicationStatus.MISSING_PROFILE_INFO ||
+              currentApplication?.status === ApplicationStatus.AWAITING_USER_INPUT ? (
               <Button
                 onClick={handleOpenApplicationDetails}
                 className="h-9 sm:h-10 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs sm:text-sm shadow-md transition-all cursor-pointer w-full"
@@ -590,6 +637,11 @@ export function JobCard({
               >
                 Review & Submit
               </Button>
+            ) : job.applied_status || currentApplication?.status === ApplicationStatus.MANUAL_APPLY_STARTED ? (
+              <div className="h-9 sm:h-10 px-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-300 font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 w-full">
+                <CheckCircle className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Applied</span>
+              </div>
             ) : (
               <Button
                 onClick={handleApplyClick}

@@ -112,13 +112,17 @@ const FIELD_GUIDANCE_MAP: Record<string, FieldGuidance> = {
 };
 
 function humanizeLabel(rawKey: string, fallbackLabel?: string): string {
-  if (fallbackLabel && fallbackLabel.trim() && !fallbackLabel.includes("_")) {
-    return fallbackLabel.trim().replace(/[*:]+$/, "");
+  if (fallbackLabel && fallbackLabel.trim() && !/^unknown\s*field$/i.test(fallbackLabel.trim())) {
+    return fallbackLabel.trim().replace(/[\*\:]+$/, "");
   }
-  const clean = (rawKey || fallbackLabel || "field")
+  const clean = (rawKey || fallbackLabel || "Question")
+    .replace(/^field_\d+$/i, "Additional Question")
     .replace(/[_-]/g, " ")
-    .replace(/[*:]+$/, "")
+    .replace(/[\*\:]+$/, "")
     .trim();
+  if (/^unknown\s*field$/i.test(clean)) {
+    return "Additional Question";
+  }
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
@@ -135,6 +139,16 @@ export function MissingProfileFieldsDialog({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // Filter out phantom/dummy clipboard inputs that have no real question
+  const validFields = missingFields.filter((f) => {
+    const label = f.label?.trim().toLowerCase();
+    const key = f.field_key?.trim().toLowerCase();
+    const isPhantom =
+      (!label || label === "unknown field") &&
+      (!key || key === "unknown_field" || key.startsWith("field_"));
+    return !isPhantom;
+  });
+
   const handleChange = (key: string, value: string) => {
     setValues(prev => ({ ...prev, [key]: value }));
   };
@@ -142,7 +156,7 @@ export function MissingProfileFieldsDialog({
   const isOptional = (f: MissingFieldInfo) =>
     f.type?.startsWith("optional") || f.label?.toLowerCase().includes("(optional)");
 
-  const requiredFields = missingFields.filter(f => !isOptional(f));
+  const requiredFields = validFields.filter(f => !isOptional(f));
   const allRequiredFilled = requiredFields.every(f => values[f.field_key]?.trim());
 
   const getFieldDetails = (field: MissingFieldInfo): FieldGuidance => {
@@ -159,10 +173,20 @@ export function MissingProfileFieldsDialog({
     if (key.includes("sponsor") || key.includes("authoriz")) return FIELD_GUIDANCE_MAP.work_authorization;
     if (key.includes("location") || key.includes("city")) return FIELD_GUIDANCE_MAP.location;
 
+    const rawLabel = field.label?.trim();
+    const isMeaningful = rawLabel && !/^unknown\s*field$/i.test(rawLabel);
+    const resolvedLabel = isMeaningful
+      ? rawLabel.replace(/[\*\:]+$/, "").trim()
+      : humanizeLabel(field.field_key, field.label);
+
     return {
-      label: humanizeLabel(field.field_key, field.label),
-      description: "This question was specifically requested by the employer for this job application.",
-      placeholder: `Enter ${field.label ? field.label.toLowerCase() : "your response"}...`,
+      label: resolvedLabel,
+      description: isMeaningful
+        ? "This question was specifically requested by the employer for this job application."
+        : "The employer requested this additional detail to complete your application.",
+      placeholder: isMeaningful
+        ? `Enter your answer...`
+        : "Enter your response...",
     };
   };
 
@@ -211,6 +235,13 @@ export function MissingProfileFieldsDialog({
       setSaveState("error");
     }
   };
+
+  // If only phantom fields exist, automatically resolve and close
+  React.useEffect(() => {
+    if (open && missingFields.length > 0 && validFields.length === 0 && saveState === "idle") {
+      handleSave();
+    }
+  }, [open, missingFields.length, validFields.length]);
 
   const renderFieldInput = (field: MissingFieldInfo, details: FieldGuidance) => {
     const value = values[field.field_key] || "";
@@ -348,7 +379,7 @@ export function MissingProfileFieldsDialog({
 
             {/* List of missing fields with beginner-friendly instructions */}
             <div className="space-y-4">
-              {missingFields.map(field => {
+              {validFields.map(field => {
                 const details = getFieldDetails(field);
                 const required = !isOptional(field);
 
@@ -357,16 +388,16 @@ export function MissingProfileFieldsDialog({
                     key={field.field_key}
                     className="flex flex-col gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] p-3.5 hover:border-white/10 transition-colors"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-sm font-semibold text-white/90 flex items-center gap-1.5">
-                        {details.label}
+                    <div className="flex items-start justify-between gap-2">
+                      <label className="text-sm font-semibold text-white/95 leading-snug flex items-start gap-1.5 break-words">
+                        <span>{details.label}</span>
                         {required ? (
-                          <span className="text-red-400 text-xs font-bold" title="Required field">*</span>
+                          <span className="text-red-400 text-xs font-bold shrink-0 mt-0.5" title="Required field">*</span>
                         ) : (
-                          <span className="text-white/40 text-[11px] font-normal">(optional)</span>
+                          <span className="text-white/40 text-[11px] font-normal shrink-0 mt-0.5">(optional)</span>
                         )}
                       </label>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${
                         required
                           ? "bg-amber-500/10 text-amber-300 border-amber-500/25"
                           : "bg-white/5 text-white/40 border-white/10"
