@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { jobId, saved_status, applied_status } = body;
+    const { jobId, saved_status, applied_status, not_relevant, hidden, feedback_reason } = body;
 
     if (!jobId) {
       return NextResponse.json(
@@ -84,12 +84,30 @@ export async function PATCH(req: NextRequest) {
         updatePayload.applied_at = new Date().toISOString();
       }
     }
+    if (typeof not_relevant === "boolean") {
+      updatePayload.not_relevant = not_relevant;
+    }
+    if (typeof hidden === "boolean") {
+      updatePayload.hidden = hidden;
+    }
+    if (feedback_reason) {
+      updatePayload.feedback_reason = feedback_reason;
+    }
 
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },
         { status: 400 }
       );
+    }
+
+    // If job was marked not_relevant or hidden, remove from cached job_matches
+    if (not_relevant || hidden) {
+      await supabase
+        .from("job_matches")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("job_id", jobId);
     }
 
     // 1. Try upserting in user_job_interactions (for canonical jobs)

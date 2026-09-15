@@ -45,6 +45,11 @@ export interface JobRecord {
   posted_at?: string | null;
   fetched_at: string;
   created_at: string;
+  match_level?: "Excellent" | "Strong" | "Good" | "Fair" | string;
+  reasons?: string[];
+  missing_requirements?: string[];
+  matched_skills?: string[];
+  explanation?: string;
 }
 
 export interface UserProfileData {

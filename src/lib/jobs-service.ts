@@ -8,6 +8,13 @@ import {
   PlatformConfig,
   SUPPORTED_PLATFORMS,
 } from "./jobs-constants";
+import {
+  buildUserCareerProfile,
+  normalizeJob,
+  scoreJob,
+  generateSearchQueries,
+  NormalizedJob,
+} from "./matching";
 
 export type { JobRecord, UserProfileData, PlatformConfig };
 export { SUPPORTED_PLATFORMS };
@@ -377,13 +384,13 @@ export function extractJobMetadata(
     }
   }
 
+  // Fallback tags if no tech tags were found: derive ONLY from title words, NEVER inject user skills!
   if (matchedTags.size === 0) {
-    userSkills.slice(0, 4).forEach((s) => matchedTags.add(s));
-  }
-  if (matchedTags.size === 0) {
-    matchedTags.add("React");
-    matchedTags.add("TypeScript");
-    matchedTags.add("Full Stack");
+    const titleWords = title
+      .split(/[\s,/-]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 3 && !/^(senior|junior|lead|staff|engineer|developer|specialist|manager|director)$/i.test(w));
+    titleWords.slice(0, 3).forEach((w) => matchedTags.add(w.charAt(0).toUpperCase() + w.slice(1)));
   }
 
   return {
@@ -401,56 +408,29 @@ export function extractJobMetadata(
 }
 
 /**
- * Calculate match percentage based on profile overlap
+ * Calculate match percentage based on profile overlap using verified matching engine
  */
 export function calculateJobMatchScore(
   profile: UserProfileData,
-  job: { title: string; description?: string | null; tags: string[]; location?: string | null }
+  job: { title: string; description?: string | null; tags?: string[]; location?: string | null }
 ): number {
-  let score = 55; // baseline
+  const userCareerProfile = buildUserCareerProfile({
+    userId: profile.userId,
+    profile: { location: profile.location, summary: profile.summary },
+    skills: (profile.skills || []).map((s) => ({ skill_name: s })),
+    experiences: profile.experiences || [],
+    educations: profile.educations || [],
+    projects: [],
+  });
 
-  const userRole = (profile.experiences[0]?.job_title || profile.summary || "").toLowerCase();
-  const jobTitleLower = job.title.toLowerCase();
-  const jobDescLower = (job.description || "").toLowerCase();
+  const normalized = normalizeJob({
+    title: job.title,
+    description: job.description || "",
+    location: job.location,
+  });
 
-  // Role keyword match (up to 20 pts)
-  const roleKeywords = [
-    "developer", "engineer", "full stack", "fullstack", "frontend",
-    "backend", "ai", "ml", "machine learning", "software"
-  ];
-  for (const kw of roleKeywords) {
-    if (userRole.includes(kw) && jobTitleLower.includes(kw)) {
-      score += 4;
-    }
-  }
-
-  // Skills overlap (up to 20 pts)
-  const userSkillsSet = new Set(profile.skills.map((s) => s.toLowerCase()));
-  let skillMatches = 0;
-  for (const tag of job.tags) {
-    if (userSkillsSet.has(tag.toLowerCase()) || jobDescLower.includes(tag.toLowerCase())) {
-      skillMatches++;
-    }
-  }
-  score += Math.min(20, skillMatches * 4);
-
-  // Location / Remote match (up to 5 pts)
-  if (
-    job.location?.toLowerCase().includes("remote") ||
-    (profile.location && job.location?.toLowerCase().includes(profile.location.toLowerCase()))
-  ) {
-    score += 5;
-  }
-
-  // Experience level alignment (up to 5 pts)
-  if (profile.experiences.length >= 2 && (jobTitleLower.includes("senior") || jobTitleLower.includes("lead"))) {
-    score += 5;
-  } else if (profile.experiences.length <= 1 && !jobTitleLower.includes("lead") && !jobTitleLower.includes("staff")) {
-    score += 5;
-  }
-
-  const jitter = (job.title.length % 7) - 3;
-  return Math.min(98, Math.max(72, score + jitter));
+  const scoreResult = scoreJob(userCareerProfile, normalized);
+  return scoreResult.passed_hard_filter ? scoreResult.score : 15;
 }
 
 // Helper function to build flexible source filter for any platform
@@ -569,29 +549,23 @@ export async function fetchCachedOrFreshJobs(
     supabase = createSupabaseClient(url, key);
   }
 
-  // 1. Resolve user profile from resume / profile data for targeting and scoring
-  let userProfileData: UserProfileData;
-  if (preloadedProfile) {
-    userProfileData = preloadedProfile;
-  } else {
-    const fullProfile = await getFullProfileData(userId);
-    userProfileData = fullProfile.userProfileData;
-  }
+  // 1. Resolve user profile from verified resume/profile data for targeting and scoring
+  const fullProfile = await getFullProfileData(userId);
+  const userProfileData: UserProfileData = preloadedProfile || fullProfile.userProfileData;
 
-  const targetQuery =
-    options.query ||
-    userProfileData.experiences[0]?.job_title ||
-    (userProfileData.summary?.toLowerCase().includes("frontend")
-      ? "Frontend Developer"
-      : userProfileData.summary?.toLowerCase().includes("full stack")
-      ? "Full Stack Engineer"
-      : userProfileData.summary?.toLowerCase().includes("ai")
-      ? "AI Engineer"
-      : userProfileData.skills.length > 0
-      ? `${userProfileData.skills[0]} Developer`
-      : "Software Engineer");
+  const userCareerProfile = buildUserCareerProfile({
+    userId,
+    profile: fullProfile.profile,
+    skills: fullProfile.rawSkills || [],
+    experiences: fullProfile.experiences || [],
+    educations: fullProfile.educations || [],
+    projects: fullProfile.projects || [],
+  });
 
-  const targetLocation = options.location || userProfileData.location || "US";
+  const generatedQueries = generateSearchQueries(userCareerProfile);
+  const targetQuery = options.query || generatedQueries[0] || "Software Engineer";
+
+  const targetLocation = options.location || userCareerProfile.locations[0] || "Remote";
 
   // 2. 6-Hour Cache Validation: Check if canonical jobs have fresh data in the DB
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
@@ -641,7 +615,7 @@ export async function fetchCachedOrFreshJobs(
   const [interactionsRes, jobsData, accurateCounts] = await Promise.all([
     supabase
       .from("user_job_interactions")
-      .select("canonical_job_id, saved_status, applied_status")
+      .select("canonical_job_id, saved_status, applied_status, not_relevant, hidden")
       .eq("user_id", userId),
     isSpecificPlatform
       ? supabase
@@ -680,12 +654,14 @@ export async function fetchCachedOrFreshJobs(
     getAccuratePlatformCounts(supabase),
   ]);
 
-  const interactionMap = new Map<string, { saved_status: boolean; applied_status: boolean }>();
+  const interactionMap = new Map<string, { saved_status: boolean; applied_status: boolean; not_relevant: boolean; hidden: boolean }>();
   if (interactionsRes.data) {
     for (const ui of interactionsRes.data) {
       interactionMap.set(ui.canonical_job_id, {
         saved_status: Boolean(ui.saved_status),
         applied_status: Boolean(ui.applied_status),
+        not_relevant: Boolean(ui.not_relevant),
+        hidden: Boolean(ui.hidden),
       });
     }
   }
@@ -716,7 +692,6 @@ export async function fetchCachedOrFreshJobs(
 
   // 4. Stable Platform Counts: Keep accurate counts across all platforms
   const platformCounts: Record<string, number> = { ...accurateCounts };
-  // Ensure counts are non-zero for any platforms present in canonicalJobs
   for (const cj of canonicalJobs) {
     const norm = normalizeSourceToPlatform(cj.source);
     if (!platformCounts[norm] || platformCounts[norm] === 0) {
@@ -731,55 +706,60 @@ export async function fetchCachedOrFreshJobs(
     platformCounts.all = sum;
   }
 
-  // 5. Transform & Score Canonical Jobs
+  // 5. Transform & Score Canonical Jobs via Tailored Matching Engine
   if (canonicalJobs && canonicalJobs.length > 0) {
-    const transformedJobs: JobRecord[] = canonicalJobs.map((cj) => {
-      const interaction = interactionMap.get(cj.id);
-      const metadata = extractJobMetadata(
-        cj.title,
-        cj.description || "",
-        userProfileData.skills,
-        cj.location,
-        cj.country,
-        cj.remote_type,
-        cj.employment_type
-      );
-      const score = calculateJobMatchScore(userProfileData, {
-        title: cj.title,
-        description: cj.description,
-        tags: metadata.tags,
-        location: cj.location || metadata.location,
-      });
+    const matchRowsToCache: any[] = [];
+    const transformedJobs: JobRecord[] = [];
 
-      let salaryDisplay = metadata.salary;
-      const salaryMin = cj.salary_min || metadata.salaryMin || null;
-      const salaryMax = cj.salary_max || metadata.salaryMax || null;
+    for (const cj of canonicalJobs) {
+      const interaction = interactionMap.get(cj.id);
+      if (interaction?.hidden || interaction?.not_relevant) {
+        continue;
+      }
+
+      const normJob: NormalizedJob =
+        cj.normalized_job_data && typeof cj.normalized_job_data === "object"
+          ? (cj.normalized_job_data as NormalizedJob)
+          : normalizeJob(cj as any);
+      const scoreResult = scoreJob(userCareerProfile, normJob, interaction);
+
+      // Section 16: Minimum relevance threshold (score < 45 or hard filter failure excluded from recommendation feed)
+      if (!scoreResult.passed_hard_filter || scoreResult.score < 45) {
+        continue;
+      }
+
+      let salaryDisplay = normJob.salary;
+      const salaryMin = cj.salary_min || normJob.salary_min || null;
+      const salaryMax = cj.salary_max || normJob.salary_max || null;
       if (salaryMin && salaryMax) {
         const curr = cj.salary_currency === "USD" ? "$" : (cj.salary_currency || "$");
         salaryDisplay = `${curr}${Math.round(salaryMin / 1000)}k - ${curr}${Math.round(salaryMax / 1000)}k`;
       }
 
       const platform = normalizeSourceToPlatform(cj.source);
+      const displayTags = scoreResult.matched_skills.length > 0
+        ? scoreResult.matched_skills
+        : normJob.required_skills.slice(0, 4);
 
-      return {
+      transformedJobs.push({
         id: cj.id || `job-${Math.random().toString(36).slice(2, 9)}`,
         user_id: userId,
         platform,
         title: cj.title,
         company: cj.company_name,
         company_logo: cj.company_logo,
-        location: cj.location || metadata.location,
-        country: cj.country || metadata.country,
-        remote_type: cj.remote_type || metadata.remoteType,
+        location: cj.location || normJob.location,
+        country: cj.country || normJob.country,
+        remote_type: cj.remote_type || normJob.remote_type,
         salary: salaryDisplay,
         salary_min: salaryMin,
         salary_max: salaryMax,
         salary_currency: cj.salary_currency || "USD",
-        job_type: cj.employment_type || metadata.jobType,
-        experience_level: metadata.experienceLevel,
+        job_type: cj.employment_type || normJob.employment_type,
+        experience_level: scoreResult.experience_match >= 85 ? "Entry Level" : "Mid Level",
         description: cj.description || `Position at ${cj.company_name}`,
-        tags: metadata.tags,
-        match_score: score,
+        tags: displayTags,
+        match_score: scoreResult.score,
         job_url: cj.job_url,
         apply_url: cj.apply_url || cj.job_url,
         source_url: cj.apply_url || cj.job_url,
@@ -788,8 +768,38 @@ export async function fetchCachedOrFreshJobs(
         posted_at: cj.posted_at || null,
         fetched_at: cj.scraped_at || cj.created_at || new Date().toISOString(),
         created_at: cj.created_at || new Date().toISOString(),
-      };
-    });
+        match_level: scoreResult.match_level,
+        reasons: scoreResult.reasons,
+        missing_requirements: scoreResult.missing_requirements,
+        matched_skills: scoreResult.matched_skills,
+        explanation: scoreResult.explanation,
+      });
+
+      matchRowsToCache.push({
+        user_id: userId,
+        job_id: cj.id,
+        score: scoreResult.score,
+        match_level: scoreResult.match_level,
+        reasons: scoreResult.reasons,
+        missing_requirements: scoreResult.missing_requirements,
+        matched_skills: scoreResult.matched_skills,
+        experience_match: scoreResult.experience_match,
+        role_match: scoreResult.role_match,
+        location_match: scoreResult.location_match,
+        explanation: scoreResult.explanation,
+        profile_version: fullProfile.profile?.profile_version || 1,
+        calculated_at: new Date().toISOString(),
+      });
+    }
+
+    // Persist matches asynchronously in public.job_matches
+    if (matchRowsToCache.length > 0) {
+      supabase
+        .from("job_matches")
+        .upsert(matchRowsToCache, { onConflict: "user_id,job_id" })
+        .then(() => {})
+        .catch(() => {});
+    }
 
     // Deduplicate by Company + Title in memory
     const seen = new Set<string>();
@@ -805,8 +815,20 @@ export async function fetchCachedOrFreshJobs(
     // Sort by match score descending
     uniqueJobs.sort((a, b) => b.match_score - a.match_score);
 
+    // Section 23: Company Diversity (max 4 per company on top results)
+    const companyCountMap = new Map<string, number>();
+    const diverseJobs: JobRecord[] = [];
+    for (const j of uniqueJobs) {
+      const cKey = j.company.toLowerCase().trim();
+      const count = companyCountMap.get(cKey) || 0;
+      if (count < 4) {
+        companyCountMap.set(cKey, count + 1);
+        diverseJobs.push(j);
+      }
+    }
+
     // Apply optional filter predicates
-    let filteredJobs = uniqueJobs;
+    let filteredJobs = diverseJobs;
 
     if (options.country && options.country !== "all") {
       const c = options.country.toLowerCase();

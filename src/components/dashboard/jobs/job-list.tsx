@@ -25,6 +25,7 @@ interface JobListProps {
   onClearFilters: () => void;
   onToggleSave: (jobId: string, currentSaved: boolean) => Promise<void>;
   onToggleApplied: (jobId: string, currentApplied: boolean) => Promise<void>;
+  onNotRelevant?: (jobId: string) => Promise<void>;
 }
 
 type TabFilter = "all" | "saved" | "high_match" | "applied";
@@ -48,6 +49,7 @@ export function JobList({
   onClearFilters,
   onToggleSave,
   onToggleApplied,
+  onNotRelevant,
 }: JobListProps) {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("match_desc");
@@ -496,6 +498,7 @@ export function JobList({
               job={job}
               onToggleSave={onToggleSave}
               onToggleApplied={onToggleApplied}
+              onNotRelevant={onNotRelevant}
               application={applicationMap[job.id] || null}
             />
           ))}
@@ -527,12 +530,18 @@ export function JobList({
           </div>
 
           <div className="max-w-md mx-auto space-y-1">
-            <h3 className="font-bold text-base text-white">No roles match your filter criteria</h3>
+            <h3 className="font-bold text-base text-white">
+              {activeTab === "all"
+                ? "We couldn't find enough strong matches yet."
+                : "No roles match your filter criteria"}
+            </h3>
             <p className="text-xs text-white/50 leading-relaxed">
               {activeTab === "saved"
                 ? "You haven't bookmarked any jobs matching these filters yet. Click 'Save' on any role to bookmark it."
                 : activeTab === "applied"
                 ? "No applied roles found matching these filters."
+                : activeTab === "all"
+                ? "Our recommendation engine prioritizes precision over raw quantity and only shows roles that realistically align with your verified experience, skills, and career level. Try widening your search or check back as fresh jobs are ingested."
                 : "No matching roles found for your selected country, job type, or salary range. Try loosening or resetting your filters."}
             </p>
           </div>
