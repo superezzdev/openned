@@ -97,6 +97,10 @@ export function JobsDashboard({
       if (!res.ok) {
         throw new Error("Failed to update save status");
       }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("saved-jobs-updated"));
+      }
     } catch (err) {
       console.error("Save toggle error, rolling back:", err);
       // Revert
