@@ -14,9 +14,10 @@ import {
 import {
   Bot, User, Building, Calendar, Clock, ChevronRight,
   Loader2, CheckCircle2, AlertCircle, AlertTriangle,
-  ExternalLink, RefreshCw, Inbox, Eye, Filter, Zap
+  ExternalLink, RefreshCw, Inbox, Eye, Filter, Zap, Bookmark, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ApplicationProgress } from "./application-progress";
 import { MissingProfileFieldsDialog } from "./missing-profile-fields-dialog";
 import { ApplicationReviewDialog } from "./application-review-dialog";
@@ -45,12 +46,14 @@ interface ApplicationRecord {
         company_name?: string;
         company_logo?: string;
         job_url?: string;
+        apply_url?: string;
       }
     | Array<{
         title?: string;
         company_name?: string;
         company_logo?: string;
         job_url?: string;
+        apply_url?: string;
       }>;
 }
 
@@ -88,6 +91,9 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
 
   const refreshApplications = useCallback(async () => {
     try {
+      // Trigger background queue recovery to unstick stale queued jobs
+      fetch("/api/applications/queue-recovery", { method: "POST" }).catch(() => {});
+
       const res = await fetch("/api/applications", { cache: "no-store" });
       if (res.ok) {
         const { applications: fresh } = await res.json();
@@ -138,6 +144,24 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
     failed: applications.filter(a => [ApplicationStatus.FAILED, ApplicationStatus.CANCELLED].includes(a.status as ApplicationStatus)).length,
   }), [applications]);
 
+  const handleStartNow = async (app: ApplicationRecord) => {
+    try {
+      await fetch(`/api/applications/${app.id}/start`, { method: "POST" });
+      await refreshApplications();
+    } catch (err) {
+      console.error("Start failed:", err);
+    }
+  };
+
+  const handleCancel = async (app: ApplicationRecord) => {
+    try {
+      await fetch(`/api/applications/${app.id}/cancel`, { method: "POST" });
+      await refreshApplications();
+    } catch (err) {
+      console.error("Cancel failed:", err);
+    }
+  };
+
   const handleRetry = async (app: ApplicationRecord) => {
     try {
       // Re-create the application from scratch
@@ -154,6 +178,53 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
       }
     } catch (err) {
       console.error("Retry failed:", err);
+    }
+  };
+
+  const handleDelete = async (app: ApplicationRecord) => {
+    // 1. Immediately delete from frontend state
+    setApplications(prev => prev.filter(a => a.id !== app.id));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("applications-updated"));
+    }
+
+    // 2. Delete from backend/database
+    try {
+      const res = await fetch(`/api/applications/${app.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        console.error("Failed to delete application from database");
+        await refreshApplications();
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
+      await refreshApplications();
+    }
+  };
+
+  const handleDeleteAllFailed = async () => {
+    const failedApps = applications.filter(a =>
+      [ApplicationStatus.FAILED, ApplicationStatus.CANCELLED].includes(a.status as ApplicationStatus)
+    );
+    if (failedApps.length === 0) return;
+
+    const failedIds = new Set(failedApps.map(a => a.id));
+
+    // 1. Immediately delete from frontend state
+    setApplications(prev => prev.filter(a => !failedIds.has(a.id)));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("applications-updated"));
+    }
+
+    // 2. Delete from backend/database
+    try {
+      const res = await fetch("/api/applications?status=FAILED", { method: "DELETE" });
+      if (!res.ok) {
+        console.error("Failed to clear failed applications from database");
+        await refreshApplications();
+      }
+    } catch (err) {
+      console.error("Clear failed error:", err);
+      await refreshApplications();
     }
   };
 
@@ -184,31 +255,46 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {FILTER_TABS.map(tab => {
-          const count = tab.id !== "all" ? counts[tab.id as keyof typeof counts] : applications.length;
-          const isActive = filter === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id)}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all border ${
-                isActive
-                  ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
-                  : "border-white/8 bg-white/[0.03] text-white/50 hover:bg-white/[0.06] hover:text-white/70"
-              }`}
-            >
-              {tab.label}
-              {count > 0 && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  isActive ? "bg-violet-500/30 text-violet-200" : "bg-white/8 text-white/40"
-                }`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {FILTER_TABS.map(tab => {
+            const count = tab.id !== "all" ? counts[tab.id as keyof typeof counts] : applications.length;
+            const isActive = filter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id)}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all border cursor-pointer ${
+                  isActive
+                    ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
+                    : "border-white/8 bg-white/[0.03] text-white/50 hover:bg-white/[0.06] hover:text-white/70"
+                }`}
+              >
+                {tab.label}
+                {count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    isActive ? "bg-violet-500/30 text-violet-200" : "bg-white/8 text-white/40"
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {counts.failed > 0 && (
+          <Button
+            onClick={handleDeleteAllFailed}
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-xs font-medium cursor-pointer ml-auto"
+            title="Delete all failed applications"
+          >
+            <Trash2 className="w-3 h-3 mr-1.5" />
+            Delete All Failed ({counts.failed})
+          </Button>
+        )}
       </div>
 
       {/* Applications list */}
@@ -235,6 +321,9 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
               onMissingFields={() => setMissingFieldsApp(app)}
               onReview={() => setReviewApp(app)}
               onRetry={() => handleRetry(app)}
+              onDelete={() => handleDelete(app)}
+              onStartNow={() => handleStartNow(app)}
+              onCancel={() => handleCancel(app)}
             />
           ))}
         </div>
@@ -264,6 +353,11 @@ export function ApplicationsDashboard({ initialApplications }: ApplicationsDashb
           applicationId={reviewApp.id}
           jobTitle={resolveCanonicalJob(reviewApp.canonical_jobs)?.title || "this job"}
           companyName={resolveCanonicalJob(reviewApp.canonical_jobs)?.company_name || "this company"}
+          jobUrl={
+            resolveCanonicalJob(reviewApp.canonical_jobs)?.job_url ||
+            resolveCanonicalJob(reviewApp.canonical_jobs)?.apply_url ||
+            reviewApp.apply_url
+          }
           platform={reviewApp.platform}
           fields={[]}
           onConfirm={async () => {
@@ -283,20 +377,62 @@ interface ApplicationCardProps {
   onMissingFields: () => void;
   onReview: () => void;
   onRetry: () => void;
+  onDelete?: () => void;
+  onStartNow?: () => void;
+  onCancel?: () => void;
 }
 
-function ApplicationCard({ application: app, onMissingFields, onReview, onRetry }: ApplicationCardProps) {
+function ApplicationCard({
+  application: app,
+  onMissingFields,
+  onReview,
+  onRetry,
+  onDelete,
+  onStartNow,
+  onCancel,
+}: ApplicationCardProps) {
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleToggleSave = async () => {
+    if (!app.job_id) return;
+    setIsSaving(true);
+    const nextSaved = !isSaved;
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: app.job_id, saved_status: nextSaved }),
+      });
+      if (res.ok) {
+        setIsSaved(nextSaved);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("saved-jobs-updated"));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to save job from application card:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const status = app.status as ApplicationStatus;
   const config = APPLICATION_STATUS_CONFIG[status] || APPLICATION_STATUS_CONFIG[ApplicationStatus.QUEUED];
   const isActive = ACTIVE_APPLICATION_STATUSES.includes(status);
   const isPaused = PAUSED_APPLICATION_STATUSES.includes(status);
-  const isFailed = status === ApplicationStatus.FAILED;
+  const isFailed = status === ApplicationStatus.FAILED || status === ApplicationStatus.CANCELLED;
 
   const canonicalJob = resolveCanonicalJob(app.canonical_jobs);
   const jobTitle = canonicalJob?.title || "Unknown Job";
   const companyName = canonicalJob?.company_name || "Unknown Company";
   const companyLogo = canonicalJob?.company_logo;
-  const jobUrl = canonicalJob?.job_url || app.apply_url;
+  const rawJobUrl = canonicalJob?.job_url || (canonicalJob as any)?.apply_url || app.apply_url;
+  const cleanJobUrl = rawJobUrl
+    ? (rawJobUrl.startsWith("http://") || rawJobUrl.startsWith("https://")
+        ? rawJobUrl
+        : `https://${rawJobUrl}`)
+    : null;
 
   const createdAt = new Date(app.created_at);
   const timeAgo = formatTimeAgo(createdAt);
@@ -319,7 +455,20 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="font-semibold text-white text-sm leading-snug truncate">{jobTitle}</p>
+              {cleanJobUrl ? (
+                <a
+                  href={cleanJobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-white hover:text-indigo-300 transition-colors text-sm leading-snug truncate group/title inline-flex items-center gap-1.5 max-w-full"
+                  title={`Open ${jobTitle} on employer site`}
+                >
+                  <span className="truncate group-hover/title:underline">{jobTitle}</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-white/40 group-hover/title:text-indigo-300 shrink-0 transition-colors" />
+                </a>
+              ) : (
+                <p className="font-semibold text-white text-sm leading-snug truncate">{jobTitle}</p>
+              )}
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 <span className="text-xs text-white/50">{companyName}</span>
                 {app.platform && (
@@ -359,13 +508,58 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
               </div>
             </div>
 
-            {/* Source badge */}
-            <div className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${config.color} ${config.bgColor} ${config.borderColor}`}>
-              {app.source === "ai_agent" ? (
-                <><Bot className="w-2.5 h-2.5" />AI</>
-              ) : (
-                <><User className="w-2.5 h-2.5" />Manual</>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Employer Site Link */}
+              {cleanJobUrl && (
+                <a
+                  href={cleanJobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border border-white/10 bg-white/[0.04] text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all shrink-0 cursor-pointer"
+                  title="Open job posting on employer site"
+                >
+                  <ExternalLink className="w-3 h-3 text-indigo-400" />
+                  <span className="hidden sm:inline">Employer Site</span>
+                  <span className="sm:hidden">Job</span>
+                </a>
               )}
+
+              {/* Save / Bookmark Button */}
+              <button
+                type="button"
+                onClick={handleToggleSave}
+                disabled={isSaving}
+                className={cn(
+                  "p-1.5 rounded-lg border transition-all cursor-pointer",
+                  isSaved
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-white/[0.04] border-white/10 text-white/50 hover:text-white hover:bg-white/10"
+                )}
+                title={isSaved ? "Saved in Saved Jobs" : "Save to Saved Jobs"}
+              >
+                <Bookmark className={cn("w-3.5 h-3.5", isSaved ? "fill-amber-400 text-amber-400" : "")} />
+              </button>
+
+              {/* Quick Delete button for failed / cancelled jobs */}
+              {isFailed && onDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="p-1.5 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 hover:text-red-300 hover:bg-red-500/20 hover:border-red-500/30 transition-all cursor-pointer"
+                  title="Delete failed application"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Source badge */}
+              <div className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${config.color} ${config.bgColor} ${config.borderColor}`}>
+                {app.source === "ai_agent" ? (
+                  <><Bot className="w-2.5 h-2.5" />AI</>
+                ) : (
+                  <><User className="w-2.5 h-2.5" />Manual</>
+                )}
+              </div>
             </div>
           </div>
 
@@ -394,9 +588,92 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
               <ApplicationErrorCard
                 failureCode={app.failure_code}
                 errorMessage={app.error_message}
-                applyUrl={jobUrl}
+                applyUrl={cleanJobUrl || undefined}
                 onRetry={onRetry}
+                onDelete={onDelete}
               />
+            </div>
+          )}
+
+          {/* Action buttons for Submission Unconfirmed */}
+          {status === ApplicationStatus.SUBMISSION_UNCONFIRMED && cleanJobUrl && (
+            <div className="pt-1 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(cleanJobUrl, "_blank", "noopener,noreferrer")}
+                className="h-7 text-xs border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 font-medium cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3 mr-1.5 text-amber-400" />
+                Check Employer Site
+              </Button>
+            </div>
+          )}
+
+          {/* Action buttons for Applying Manually */}
+          {status === ApplicationStatus.MANUAL_APPLY_STARTED && cleanJobUrl && (
+            <div className="pt-1 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(cleanJobUrl, "_blank", "noopener,noreferrer")}
+                className="h-7 text-xs border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 font-medium cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3 mr-1.5 text-blue-400" />
+                Open Job Application
+              </Button>
+            </div>
+          )}
+
+          {/* Action buttons for Submitted */}
+          {status === ApplicationStatus.SUBMITTED && cleanJobUrl && (
+            <div className="pt-1 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(cleanJobUrl, "_blank", "noopener,noreferrer")}
+                className="h-7 text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-200 font-medium cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3 mr-1.5 text-emerald-400" />
+                View Employer Posting
+              </Button>
+            </div>
+          )}
+
+          {/* Action buttons for queued status */}
+          {status === ApplicationStatus.QUEUED && (
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
+              {onStartNow && (
+                <Button
+                  onClick={onStartNow}
+                  size="sm"
+                  className="h-7 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 font-semibold"
+                >
+                  <Bot className="w-3 h-3 mr-1.5" />
+                  Start Now
+                </Button>
+              )}
+              {cleanJobUrl && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(cleanJobUrl, "_blank", "noopener,noreferrer")}
+                  className="h-7 text-xs border-white/10 bg-white/[0.04] text-white/70 hover:text-white font-medium cursor-pointer"
+                >
+                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                  Apply Manually
+                </Button>
+              )}
+              {onCancel && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onCancel}
+                  className="h-7 text-xs text-red-400/70 hover:text-red-300 hover:bg-red-500/10"
+                >
+                  Cancel
+                </Button>
+              )}
             </div>
           )}
 
@@ -423,11 +700,11 @@ function ApplicationCard({ application: app, onMissingFields, onReview, onRetry 
                   Review & Submit
                 </Button>
               )}
-              {status === ApplicationStatus.AWAITING_USER_ACTION && jobUrl && (
+              {status === ApplicationStatus.AWAITING_USER_ACTION && cleanJobUrl && (
                 <Button
                   size="sm"
-                  onClick={() => window.open(jobUrl, "_blank", "noopener,noreferrer")}
-                  className="h-7 text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 font-semibold"
+                  onClick={() => window.open(cleanJobUrl, "_blank", "noopener,noreferrer")}
+                  className="h-7 text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 font-semibold cursor-pointer"
                 >
                   <ExternalLink className="w-3 h-3 mr-1.5" />
                   Apply Manually

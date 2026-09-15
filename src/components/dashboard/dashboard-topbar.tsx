@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDashboard } from "./dashboard-context";
-import { Menu, PanelLeft, ChevronRight, Bell, Sparkles } from "lucide-react";
+import { Menu, PanelLeft, ChevronRight, Bell } from "lucide-react";
 
 const routeNames: Record<string, string> = {
   "/dashboard": "Overview",
@@ -12,7 +12,6 @@ const routeNames: Record<string, string> = {
   "/dashboard/resume": "Resume",
   "/dashboard/profile": "Profile",
   "/dashboard/applications": "Applications",
-  "/dashboard/billing": "Billing & Credits",
   "/dashboard/settings": "Profile Settings",
 };
 
@@ -82,15 +81,6 @@ export function DashboardTopbar() {
           <Bell className="w-4 h-4" />
           <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400" />
         </button>
-
-        {/* Quick Upgrade / Credits Link */}
-        <Link
-          href="/dashboard/billing"
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-black bg-white hover:bg-white/90 rounded-xl transition-all shadow-sm"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Credits</span>
-        </Link>
       </div>
     </header>
   );

@@ -60,3 +60,45 @@ export async function GET(
     return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const adminClient = getAdminClient();
+
+    // Check application existence and ownership
+    const { data: existingApp, error: findError } = await adminClient
+      .from("applications")
+      .select("id, status")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
+    if (!existingApp) return NextResponse.json({ error: "Application not found" }, { status: 404 });
+
+    // Remove any active background worker locks
+    await adminClient.from("application_worker_locks").delete().eq("application_id", id);
+
+    // Delete application (cascades to forms, form fields, and session records)
+    const { error: deleteError } = await adminClient
+      .from("applications")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+
+    return NextResponse.json({ success: true, id });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+  }
+}
+

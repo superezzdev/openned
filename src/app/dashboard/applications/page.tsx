@@ -26,7 +26,7 @@ async function getApplications(userId: string) {
       failure_code, error_message, missing_fields,
       submitted_at, created_at, updated_at,
       canonical_jobs (
-        title, company_name, company_logo, job_url
+        title, company_name, company_logo, job_url, apply_url
       )
     `)
     .eq("user_id", userId)
