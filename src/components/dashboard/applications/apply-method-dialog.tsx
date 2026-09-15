@@ -3,9 +3,10 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Bot, User, ExternalLink, Loader2, Zap, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { Bot, User, ExternalLink, Loader2, Zap, CheckCircle2, AlertCircle, Clock, Bookmark } from "lucide-react";
 import { ApplicationStatus } from "@/lib/applications/types";
 import { formatJobPostingTime } from "@/lib/posting-time";
+import { cn } from "@/lib/utils";
 
 interface ApplyMethodDialogProps {
   open: boolean;
@@ -33,6 +34,30 @@ export function ApplyMethodDialog({
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveJob = async () => {
+    setIsSaving(true);
+    const nextSaved = !isSaved;
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, saved_status: nextSaved }),
+      });
+      if (res.ok) {
+        setIsSaved(nextSaved);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("saved-jobs-updated"));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to save job from dialog:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const postingTime = postedAt ? formatJobPostingTime(postedAt) : null;
   const isLoading = state === "loading_manual" || state === "loading_auto";
@@ -248,9 +273,30 @@ export function ApplyMethodDialog({
               </div>
             </button>
 
-            <p className="text-center text-white/25 text-[11px] px-2">
-              The AI agent will pause and ask for your review before submitting.
-            </p>
+            <div className="flex items-center justify-between pt-3 border-t border-white/5">
+              <button
+                type="button"
+                onClick={handleSaveJob}
+                disabled={isSaving}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer",
+                  isSaved
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-white/[0.04] border-white/10 text-white/70 hover:text-white hover:bg-white/10"
+                )}
+              >
+                <Bookmark className={cn("w-3.5 h-3.5", isSaved ? "fill-amber-400 text-amber-400" : "text-white/50")} />
+                <span>{isSaved ? "Saved to Bookmarks" : "Save Job"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="text-xs text-white/40 hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </DialogContent>

@@ -29,17 +29,27 @@ function resolveFillerContext(arg1: any, arg2: any): { provider: BrowserProvider
     // Called as (provider, page)
     return {
       provider: arg1,
-      page: arg2?.rawPage ? arg2 : { rawPage: arg2, url: () => arg2?.url?.() || "", title: () => arg2?.title?.() || "" },
+      page: arg2?.rawPage
+        ? arg2
+        : {
+            rawPage: arg2,
+            activeFrame: arg2?.activeFrame,
+            url: () => arg2?.url?.() || "",
+            title: () => arg2?.title?.() || "",
+          },
     };
   }
   // Called as (page) — wrap with default LocalBrowserProvider for backwards compatibility
   const rawPage = arg1?.rawPage || arg1;
   const provider = new LocalBrowserProvider();
-  const pageHandle: PageHandle = arg1?.rawPage ? arg1 : {
-    rawPage,
-    url: () => rawPage.url(),
-    title: () => rawPage.title(),
-  };
+  const pageHandle: PageHandle = arg1?.rawPage
+    ? arg1
+    : {
+        rawPage,
+        activeFrame: arg1?.activeFrame,
+        url: () => rawPage.url(),
+        title: () => rawPage.title(),
+      };
   return { provider, page: pageHandle };
 }
 

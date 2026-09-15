@@ -53,6 +53,14 @@ export class BrowserbaseProvider implements BrowserProvider {
             viewport: options?.viewport || { width: 1280, height: 800 },
           });
 
+    // Universal polyfill to prevent ReferenceError: __name is not defined
+    // when bundler helpers are stringified into browser evaluate contexts
+    await context.addInitScript(() => {
+      try {
+        (window as any).__name = (window as any).__name || ((fn: any) => fn);
+      } catch {}
+    }).catch(() => {});
+
     const pages = context.pages();
     const rawPage = pages.length > 0 ? pages[0] : await context.newPage();
 
@@ -78,9 +86,9 @@ export class BrowserbaseProvider implements BrowserProvider {
       .catch(() => ({} as { debuggerUrl?: string; wsUrl?: string }));
     const replayUrl = this.service.getReplayUrl(sessionInfo.id);
 
-
     const activePage: PageHandle = {
       rawPage,
+      activeFrame: undefined,
       url: () => rawPage.url(),
       title: () => rawPage.title(),
     };
@@ -101,7 +109,7 @@ export class BrowserbaseProvider implements BrowserProvider {
     session: BrowserSession,
     url: string,
     options?: {
-      waitUntil?: "load" | "domcontentloaded" | "networkidle";
+      waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit";
       timeout?: number;
     }
   ): Promise<PageHandle> {
@@ -121,12 +129,22 @@ export class BrowserbaseProvider implements BrowserProvider {
     }
 
     const waitUntil = options?.waitUntil || "domcontentloaded";
-    const timeout = options?.timeout ?? 30000;
+    const timeout = options?.timeout ?? 45000;
 
-    await rawPage.goto(url, { waitUntil, timeout });
+    try {
+      await rawPage.goto(url, { waitUntil, timeout });
+    } catch (gotoErr: any) {
+      if (gotoErr?.message?.includes("Timeout") && waitUntil !== "commit") {
+        await rawPage.goto(url, { waitUntil: "commit", timeout: 20000 }).catch(() => {});
+        await rawPage.waitForTimeout(3000).catch(() => {});
+      } else {
+        throw gotoErr;
+      }
+    }
 
     const pageHandle: PageHandle = {
       rawPage,
+      activeFrame: undefined,
       url: () => rawPage.url(),
       title: () => rawPage.title(),
     };
@@ -149,7 +167,11 @@ export class BrowserbaseProvider implements BrowserProvider {
   }
 
   public async getPageHtml(page: PageHandle): Promise<string> {
-    return page.rawPage.content();
+    return (page.activeFrame || page.rawPage).content();
+  }
+
+  private getTarget(page: PageHandle): any {
+    return page.activeFrame || page.rawPage;
   }
 
   public async waitForSelector(
@@ -157,7 +179,7 @@ export class BrowserbaseProvider implements BrowserProvider {
     selector: string,
     options?: { timeout?: number; state?: "attached" | "detached" | "visible" | "hidden" }
   ): Promise<void> {
-    await page.rawPage.waitForSelector(selector, {
+    await this.getTarget(page).waitForSelector(selector, {
       timeout: options?.timeout ?? 10000,
       state: options?.state || "visible",
     });
@@ -172,17 +194,17 @@ export class BrowserbaseProvider implements BrowserProvider {
     pageFunction: ((arg: T) => R) | string,
     arg?: T
   ): Promise<R> {
-    return page.rawPage.evaluate(pageFunction as any, arg);
+    return this.getTarget(page).evaluate(pageFunction as any, arg);
   }
 
   public async findElement(page: PageHandle, selector: string): Promise<any | null> {
-    const loc = page.rawPage.locator(selector).first();
+    const loc = this.getTarget(page).locator(selector).first();
     const count = await loc.count().catch(() => 0);
     return count > 0 ? loc : null;
   }
 
   public async findElements(page: PageHandle, selector: string): Promise<any[]> {
-    const loc = page.rawPage.locator(selector);
+    const loc = this.getTarget(page).locator(selector);
     const count = await loc.count().catch(() => 0);
     const results: any[] = [];
     for (let i = 0; i < count; i++) {
@@ -198,7 +220,7 @@ export class BrowserbaseProvider implements BrowserProvider {
   ): Promise<void> {
     const timeout = options?.timeout ?? 10000;
     if (typeof target === "string") {
-      const loc = page.rawPage.locator(target).first();
+      const loc = this.getTarget(page).locator(target).first();
       await loc.click({ timeout });
     } else if (target && typeof target.click === "function") {
       await target.click({ timeout });
@@ -215,7 +237,7 @@ export class BrowserbaseProvider implements BrowserProvider {
   ): Promise<void> {
     const timeout = options?.timeout ?? 10000;
     if (typeof target === "string") {
-      const loc = page.rawPage.locator(target).first();
+      const loc = this.getTarget(page).locator(target).first();
       await loc.fill(value, { timeout });
     } else if (target && typeof target.fill === "function") {
       await target.fill(value, { timeout });
@@ -232,7 +254,7 @@ export class BrowserbaseProvider implements BrowserProvider {
   ): Promise<void> {
     const timeout = options?.timeout ?? 10000;
     if (typeof target === "string") {
-      const loc = page.rawPage.locator(target).first();
+      const loc = this.getTarget(page).locator(target).first();
       await loc.selectOption(value, { timeout });
     } else if (target && typeof target.selectOption === "function") {
       await target.selectOption(value, { timeout });
@@ -248,7 +270,7 @@ export class BrowserbaseProvider implements BrowserProvider {
   ): Promise<void> {
     const timeout = options?.timeout ?? 10000;
     if (typeof target === "string") {
-      const loc = page.rawPage.locator(target).first();
+      const loc = this.getTarget(page).locator(target).first();
       await loc.check({ timeout });
     } else if (target && typeof target.check === "function") {
       await target.check({ timeout });
@@ -263,7 +285,7 @@ export class BrowserbaseProvider implements BrowserProvider {
     filePath: string
   ): Promise<void> {
     if (typeof target === "string") {
-      const loc = page.rawPage.locator(target).first();
+      const loc = this.getTarget(page).locator(target).first();
       await loc.setInputFiles(filePath);
     } else if (target && typeof target.setInputFiles === "function") {
       await target.setInputFiles(filePath);

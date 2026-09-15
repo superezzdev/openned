@@ -75,15 +75,16 @@ export async function uploadResume(
     // 2. Verify file input exists
     let exists = false;
     let acceptAttr = "";
+    const targetContainer = page?.activeFrame || rawPage;
 
     if (provider?.findElement) {
       const el = await provider.findElement(page, fileInputSelector);
       exists = Boolean(el);
-      if (exists && rawPage?.locator) {
-        acceptAttr = (await rawPage.locator(fileInputSelector).first().getAttribute("accept")) || "";
+      if (exists && targetContainer?.locator) {
+        acceptAttr = (await targetContainer.locator(fileInputSelector).first().getAttribute("accept")) || "";
       }
-    } else if (rawPage?.locator) {
-      const fileInput = rawPage.locator(fileInputSelector).first();
+    } else if (targetContainer?.locator) {
+      const fileInput = targetContainer.locator(fileInputSelector).first();
       exists = (await fileInput.count()) > 0;
       if (exists) {
         acceptAttr = (await fileInput.getAttribute("accept")) || "";
@@ -110,8 +111,8 @@ export async function uploadResume(
     // 4. Upload via Provider abstraction or Playwright
     if (provider?.uploadFile) {
       await provider.uploadFile(page, fileInputSelector, tempFilePath);
-    } else if (rawPage?.locator) {
-      await rawPage.locator(fileInputSelector).first().setInputFiles(tempFilePath);
+    } else if (targetContainer?.locator) {
+      await targetContainer.locator(fileInputSelector).first().setInputFiles(tempFilePath);
     } else {
       throw new Error("No available upload implementation");
     }

@@ -362,22 +362,31 @@ export async function independentlyVerifySubmission(
     const evaluate = <T = any, R = any>(fn: any, a?: T): Promise<R> =>
       provider?.evaluate ? provider.evaluate(page, fn, a) : rawPage.evaluate(fn, a);
 
+    const targetContainer = page?.activeFrame || rawPage;
+
     // 1. Check for explicit error banners first
     for (const sel of ERROR_SELECTORS) {
-      if (rawPage?.locator) {
-        const el = rawPage.locator(sel).first();
-        if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
-          const errText = await el.textContent().catch(() => "");
-          if (errText && errText.trim().length > 3) {
-            return { confirmed: false, hasError: true, errorMessage: errText.trim() };
+      for (const container of [targetContainer, rawPage]) {
+        if (container?.locator) {
+          const el = container.locator(sel).first();
+          if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
+            const errText = await el.textContent().catch(() => "");
+            if (errText && errText.trim().length > 3) {
+              return { confirmed: false, hasError: true, errorMessage: errText.trim() };
+            }
           }
         }
       }
     }
 
-    const bodyText: string = await evaluate(() => document.body.textContent || "").catch(() => "");
+    const targetBodyText: string = await evaluate(() => document.body?.textContent || "").catch(() => "");
+    const topBodyText: string = rawPage?.evaluate
+      ? await rawPage.evaluate(() => document.body?.textContent || "").catch(() => "")
+      : "";
+    const combinedBodyText = `${targetBodyText} ${topBodyText}`;
+
     for (const pattern of ERROR_TEXT_PATTERNS) {
-      const match = bodyText.match(pattern);
+      const match = combinedBodyText.match(pattern);
       if (match) {
         return { confirmed: false, hasError: true, errorMessage: match[0] };
       }
@@ -391,18 +400,20 @@ export async function independentlyVerifySubmission(
 
     // 3. Check DOM for confirmation elements
     for (const sel of CONFIRMATION_SELECTORS) {
-      if (rawPage?.locator) {
-        const el = rawPage.locator(sel).first();
-        if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
-          const externalAppId = await detectExternalApplicationId(page);
-          return { confirmed: true, confirmedVia: "dom", hasError: false, externalAppId: externalAppId || undefined };
+      for (const container of [targetContainer, rawPage]) {
+        if (container?.locator) {
+          const el = container.locator(sel).first();
+          if ((await el.count().catch(() => 0)) > 0 && (await el.isVisible().catch(() => false))) {
+            const externalAppId = await detectExternalApplicationId(page);
+            return { confirmed: true, confirmedVia: "dom", hasError: false, externalAppId: externalAppId || undefined };
+          }
         }
       }
     }
 
     // 4. Check page text for confirmation messages
     for (const pattern of CONFIRMATION_TEXT_PATTERNS) {
-      if (pattern.test(bodyText)) {
+      if (pattern.test(combinedBodyText)) {
         const externalAppId = await detectExternalApplicationId(page);
         return { confirmed: true, confirmedVia: "text", hasError: false, externalAppId: externalAppId || undefined };
       }
