@@ -85,6 +85,7 @@ export function JobsSkeleton() {
                       <Skeleton className="h-3.5 w-24 bg-white/5 rounded-md" />
                       <Skeleton className="h-3.5 w-20 bg-white/5 rounded-md" />
                       <Skeleton className="h-3.5 w-24 bg-white/5 rounded-md" />
+                      <Skeleton className="h-3.5 w-28 bg-white/5 rounded-md" />
                     </div>
 
                     <div className="flex items-center gap-2 pt-0.5">

@@ -216,21 +216,54 @@ export class ResumeProfileValidator {
     const warnings: string[] = [];
     const rejectedFields: RejectedField[] = [];
 
+    // If rawText is empty or very short (< 150 chars) and extraction came from vision,
+    // synthesize grounding text from all extracted evidence snippets
+    let effectiveRawText = rawText;
+    if ((!rawText || rawText.trim().length < 150) && extraction.meta?.model?.includes("vision")) {
+      const snippets: string[] = [];
+      if (extraction.personal.full_name?.evidence) snippets.push(extraction.personal.full_name.evidence);
+      if (extraction.personal.first_name?.evidence) snippets.push(extraction.personal.first_name.evidence);
+      if (extraction.personal.last_name?.evidence) snippets.push(extraction.personal.last_name.evidence);
+      if (extraction.personal.email?.evidence) snippets.push(extraction.personal.email.evidence);
+      if (extraction.personal.phone?.evidence) snippets.push(extraction.personal.phone.evidence);
+      if (extraction.personal.location?.evidence) snippets.push(extraction.personal.location.evidence);
+      for (const edu of extraction.education || []) {
+        if (edu.institution?.evidence) snippets.push(edu.institution.evidence);
+        if (edu.degree?.evidence) snippets.push(edu.degree.evidence);
+        if (edu.field_of_study?.evidence) snippets.push(edu.field_of_study.evidence);
+      }
+      for (const exp of extraction.experience || []) {
+        if (exp.company?.evidence) snippets.push(exp.company.evidence);
+        if (exp.title?.evidence) snippets.push(exp.title.evidence);
+        if (exp.description?.evidence) snippets.push(exp.description.evidence);
+      }
+      for (const proj of extraction.projects || []) {
+        if (proj.name?.evidence) snippets.push(proj.name.evidence);
+        if (proj.description?.evidence) snippets.push(proj.description.evidence);
+      }
+      for (const cat of Object.values(extraction.skills || {})) {
+        for (const s of cat || []) {
+          if (s.evidence) snippets.push(s.evidence);
+        }
+      }
+      effectiveRawText = snippets.join("\n");
+    }
+
     // --- 1. PERSONAL DETAILS ---
     const verifiedFullName = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.full_name,
       "personal.full_name",
       rejectedFields
     );
     const verifiedFirstName = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.first_name,
       "personal.first_name",
       rejectedFields
     );
     const verifiedLastName = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.last_name,
       "personal.last_name",
       rejectedFields
@@ -238,7 +271,7 @@ export class ResumeProfileValidator {
 
     // Email validation
     let verifiedEmail = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.email,
       "personal.email",
       rejectedFields
@@ -254,7 +287,7 @@ export class ResumeProfileValidator {
 
     // Phone validation
     let verifiedPhone = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.phone,
       "personal.phone",
       rejectedFields
@@ -270,7 +303,7 @@ export class ResumeProfileValidator {
 
     // Location validation (Crucial: verify it is candidate location, not company location)
     const verifiedLocation = this.validateField(
-      rawText,
+      effectiveRawText,
       extraction.personal.location,
       "personal.location",
       rejectedFields
@@ -281,37 +314,37 @@ export class ResumeProfileValidator {
     for (let i = 0; i < (extraction.education || []).length; i++) {
       const edu = extraction.education[i];
       const inst = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.institution,
         `education[${i}].institution`,
         rejectedFields
       );
       const degree = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.degree,
         `education[${i}].degree`,
         rejectedFields
       );
       const fieldOfStudy = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.field_of_study,
         `education[${i}].field_of_study`,
         rejectedFields
       );
       const startDate = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.start_date,
         `education[${i}].start_date`,
         rejectedFields
       );
       const endDate = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.end_date,
         `education[${i}].end_date`,
         rejectedFields
       );
       const grade = this.validateField(
-        rawText,
+        effectiveRawText,
         edu.grade,
         `education[${i}].grade`,
         rejectedFields
@@ -342,43 +375,43 @@ export class ResumeProfileValidator {
     for (let i = 0; i < (extraction.experience || []).length; i++) {
       const exp = extraction.experience[i];
       const company = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.company,
         `experience[${i}].company`,
         rejectedFields
       );
       const title = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.title,
         `experience[${i}].title`,
         rejectedFields
       );
       const empType = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.employment_type,
         `experience[${i}].employment_type`,
         rejectedFields
       );
       const loc = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.location,
         `experience[${i}].location`,
         rejectedFields
       );
       const startDate = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.start_date,
         `experience[${i}].start_date`,
         rejectedFields
       );
       const endDate = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.end_date,
         `experience[${i}].end_date`,
         rejectedFields
       );
       const desc = this.validateField(
-        rawText,
+        effectiveRawText,
         exp.description,
         `experience[${i}].description`,
         rejectedFields
@@ -386,7 +419,7 @@ export class ResumeProfileValidator {
 
       // Verify achievements
       const verifiedAchievements = (exp.achievements || []).filter((ach) => {
-        return verifyTextGrounding(rawText, ach.value, ach.evidence);
+        return verifyTextGrounding(effectiveRawText, ach.value, ach.evidence);
       });
 
       // Date order check
@@ -416,35 +449,35 @@ export class ResumeProfileValidator {
     for (let i = 0; i < (extraction.projects || []).length; i++) {
       const proj = extraction.projects[i];
       const name = this.validateField(
-        rawText,
+        effectiveRawText,
         proj.name,
         `projects[${i}].name`,
         rejectedFields
       );
       const desc = this.validateField(
-        rawText,
+        effectiveRawText,
         proj.description,
         `projects[${i}].description`,
         rejectedFields
       );
       const startDate = this.validateField(
-        rawText,
+        effectiveRawText,
         proj.start_date,
         `projects[${i}].start_date`,
         rejectedFields
       );
       const endDate = this.validateField(
-        rawText,
+        effectiveRawText,
         proj.end_date,
         `projects[${i}].end_date`,
         rejectedFields
       );
 
       const verifiedTech = (proj.technologies || []).filter((t) =>
-        verifyTextGrounding(rawText, t.value, t.evidence)
+        verifyTextGrounding(effectiveRawText, t.value, t.evidence)
       );
       const verifiedLinks = (proj.links || []).filter((l) =>
-        verifyTextGrounding(rawText, l.value, l.evidence)
+        verifyTextGrounding(effectiveRawText, l.value, l.evidence)
       );
 
       if (name.value || desc.value) {
@@ -467,7 +500,7 @@ export class ResumeProfileValidator {
       const verified: Array<EvidenceField<string>> = [];
       for (const skill of skillsList || []) {
         const checked = this.validateField(
-          rawText,
+          effectiveRawText,
           skill,
           `skills.${groupName}.${skill.value}`,
           rejectedFields
@@ -494,7 +527,7 @@ export class ResumeProfileValidator {
     const verifiedAchievements: StrictResumeExtraction["achievements"] = [];
     for (let i = 0; i < (extraction.achievements || []).length; i++) {
       const ach = extraction.achievements[i];
-      if (verifyTextGrounding(rawText, ach.value, ach.evidence)) {
+      if (verifyTextGrounding(effectiveRawText, ach.value, ach.evidence)) {
         verifiedAchievements.push(ach);
       } else {
         rejectedFields.push({
@@ -509,7 +542,7 @@ export class ResumeProfileValidator {
     const verifiedCertifications: StrictResumeExtraction["certifications"] = [];
     for (let i = 0; i < (extraction.certifications || []).length; i++) {
       const cert = extraction.certifications[i];
-      if (verifyTextGrounding(rawText, cert.certification_name, cert.evidence)) {
+      if (verifyTextGrounding(effectiveRawText, cert.certification_name, cert.evidence)) {
         verifiedCertifications.push(cert);
       } else {
         rejectedFields.push({
@@ -528,8 +561,8 @@ export class ResumeProfileValidator {
       if (!link) return null;
       // Either username or url must be grounded in raw text
       const grounded =
-        verifyTextGrounding(rawText, link.username, link.evidence) ||
-        verifyTextGrounding(rawText, link.url, link.evidence);
+        verifyTextGrounding(effectiveRawText, link.username, link.evidence) ||
+        verifyTextGrounding(effectiveRawText, link.url, link.evidence);
 
       if (!grounded) {
         rejectedFields.push({
@@ -572,10 +605,26 @@ export class ResumeProfileValidator {
       achievements: verifiedAchievements,
       certifications: verifiedCertifications,
       links: verifiedLinks,
+      meta: extraction.meta,
     };
+
+    // Quality Gate: If document is substantial (> 300 chars) but has 0 core entities, mark quality as insufficient
+    const totalSkillsCount = Object.values(verifiedSkills).reduce((acc, arr) => acc + arr.length, 0);
+    const totalExperienceCount = verifiedExperience.length;
+    const totalEducationCount = verifiedEducation.length;
+    const totalProjectsCount = verifiedProjects.length;
+
+    const isSubstantialDocument = (rawText || "").trim().length > 300 || (effectiveRawText || "").trim().length > 300;
+    const hasCoreEntities = totalSkillsCount > 0 || totalExperienceCount > 0 || totalEducationCount > 0 || totalProjectsCount > 0;
+    const isSufficientQuality = !isSubstantialDocument || hasCoreEntities;
+
+    if (!isSufficientQuality) {
+      warnings.push("Extracted entity density is suspiciously low: 0 skills, 0 experiences, 0 education, and 0 projects found in substantial document.");
+    }
 
     return {
       isValid: errors.length === 0,
+      isSufficientQuality,
       errors,
       warnings,
       rejectedFields,

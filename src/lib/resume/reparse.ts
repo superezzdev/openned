@@ -85,8 +85,15 @@ export async function reparseResume(userId: string): Promise<ReparseUserResult> 
   // 4. Extract raw text & embedded document links
   const rawText = await extractTextFromResume(buffer, mimeType, primaryResume.file_name);
 
-  // 5. Parse with Strict Zero-Hallucination Engine
-  const strictExtraction = await parseResumeStrict(rawText);
+  const isPdf = mimeType.includes("pdf") || primaryResume.file_name.toLowerCase().endsWith(".pdf");
+  const isScannedPdf = isPdf && rawText.trim().length < 150;
+
+  // 5. Parse with Multi-Model Fallback Engine (Gemini + Groq + Multimodal Vision)
+  const strictExtraction = await parseResumeStrict(rawText, {
+    fileBuffer: buffer,
+    mimeType,
+    isScannedPdf,
+  });
 
   // 6. Validate, stage, audit diffs, and sync verified data to profile
   const syncResult = await stageAndSyncResumeProfile(
