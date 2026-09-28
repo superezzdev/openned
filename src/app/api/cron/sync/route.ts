@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncAllSources } from "@/lib/ingestion/sync-engine";
 
+export const maxDuration = 300;
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");

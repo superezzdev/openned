@@ -53,7 +53,16 @@ export function selectBrowserProvider(
     return new BrowserbaseProvider();
   }
 
-  // 4. AUTO default: start with LocalBrowserProvider first
+  // 4. AUTO mode: in serverless cloud environments (like Vercel) or when configured,
+  // prefer BrowserbaseProvider when API key is present to avoid missing Chromium binary errors
+  if (
+    (process.env.VERCEL || process.env.DEFAULT_AUTOMATION_PROVIDER === "BROWSERBASE") &&
+    process.env.BROWSERBASE_API_KEY
+  ) {
+    return new BrowserbaseProvider();
+  }
+
+  // 5. AUTO default: start with LocalBrowserProvider first
   return new LocalBrowserProvider();
 }
 
