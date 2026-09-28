@@ -80,6 +80,13 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   } catch (error) {
     console.error("[Supabase Middleware] Error updating session:", error);
+    const { pathname } = request.nextUrl;
+    if (pathname.startsWith("/dashboard")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/signin";
+      url.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(url);
+    }
     return supabaseResponse;
   }
 }

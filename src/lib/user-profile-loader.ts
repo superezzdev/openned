@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { calculateProfileCompleteness, ProfileDataInput, ProfileCompletenessResult } from "@/lib/profile-utils";
 import type { UserProfileData } from "./jobs-constants";
 
@@ -28,15 +29,30 @@ export interface FullProfileResult {
   targetRole: string;
 }
 
+function getFallbackAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "placeholder-key";
+  return createSupabaseAdmin(url, key);
+}
+
 /**
  * Memoized fetch for authenticated user during a single server render request lifecycle.
  */
 export const getAuthUser = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    if (error) return null;
+    return user;
+  } catch {
+    return null;
+  }
 });
 
 /**
@@ -44,11 +60,20 @@ export const getAuthUser = cache(async () => {
  * Runs only ONCE per request across layout.tsx, page.tsx, and nested server functions.
  */
 export const getFullProfileData = cache(async (userId: string): Promise<FullProfileResult> => {
-  const supabase = await createClient();
+  let supabase: any;
+  try {
+    supabase = await createClient();
+  } catch {
+    supabase = getFallbackAdminClient();
+  }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: any = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user ?? null;
+  } catch {
+    // ignore
+  }
 
   // 1. Fetch main profile
   const { data: profile } = await supabase

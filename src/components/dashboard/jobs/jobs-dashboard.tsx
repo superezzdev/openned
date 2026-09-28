@@ -55,7 +55,13 @@ export function JobsDashboard({
       });
 
       if (!res.ok) {
-        throw new Error(`Failed to sync jobs (status ${res.status})`);
+        let msg = `Failed to sync jobs (status ${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData?.error) msg = errData.error;
+        } catch {}
+        setErrorMessage(msg);
+        return;
       }
 
       const data = await res.json();

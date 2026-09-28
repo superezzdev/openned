@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Bot, User, ExternalLink, Loader2, Zap, CheckCircle2, AlertCircle, Clock, Bookmark } from "lucide-react";
 import { ApplicationStatus } from "@/lib/applications/types";
 import { formatJobPostingTime } from "@/lib/posting-time";
@@ -33,7 +32,7 @@ export function ApplyMethodDialog({
 }: ApplyMethodDialogProps) {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [, setApplicationId] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -93,8 +92,9 @@ export function ApplyMethodDialog({
       }
       onOpenChange(false);
       setState("idle");
-    } catch (err: any) {
-      setError(err?.message || "An error occurred. Please try opening the link manually.");
+    } catch (err: unknown) {
+      const e = err as Error;
+      setError(e?.message || "An error occurred. Please try opening the link manually.");
       setState("error");
       // Fallback: open URL anyway
       window.open(applyUrl, "_blank", "noopener,noreferrer");
@@ -148,8 +148,9 @@ export function ApplyMethodDialog({
         onOpenChange(false);
         setState("idle");
       }, 2000);
-    } catch (err: any) {
-      setError(err?.message || "Failed to start AI automation. Please try manually.");
+    } catch (err: unknown) {
+      const e = err as Error;
+      setError(e?.message || "Failed to start AI automation. Please try manually.");
       setState("error");
     }
   };
@@ -166,7 +167,7 @@ export function ApplyMethodDialog({
       <DialogContent className="sm:max-w-md bg-[#0f1117] border border-white/10 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-white text-lg font-bold">Apply to this Job</DialogTitle>
-          <DialogDescription className="text-white/50 text-sm mt-1 space-y-1">
+          <DialogDescription className="text-white/50 text-sm mt-1 space-y-1" render={<div />}>
             <div>
               <span className="font-semibold text-white/70">{jobTitle}</span>
               {" "}at{" "}
@@ -239,7 +240,7 @@ export function ApplyMethodDialog({
                   <ExternalLink className="w-3 h-3 text-white/30" />
                 </div>
                 <p className="text-white/45 text-xs mt-0.5 leading-snug">
-                  Opens the application page in a new tab. You'll fill it out yourself.
+                  Opens the application page in a new tab. You&apos;ll fill it out yourself.
                 </p>
               </div>
             </button>
