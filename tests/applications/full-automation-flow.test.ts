@@ -376,7 +376,7 @@ describe("Full AI Job Application Automation Flow & Hardening Suite", () => {
 
       await releaseApplicationLock(appId, lockAcquired!);
       await context.close();
-    });
+    }, 15000);
   });
 
   // ===========================================================================

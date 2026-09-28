@@ -11,7 +11,7 @@ export function CTASection() {
       {/* Background Rings / Portal Motif */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         {/* Grain overlay */}
-        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+        <div className="absolute inset-0 opacity-[0.03] bg-[url('/noise.svg')]" />
         
         {/* Radial gradient glow in the center */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,transparent_55%)]" />

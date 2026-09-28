@@ -21,9 +21,14 @@ export function Navbar() {
 
     // Check Supabase Auth
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsLoggedIn(!!user);
-    });
+    supabase.auth
+      .getUser()
+      .then((res) => {
+        setIsLoggedIn(!!res?.data?.user);
+      })
+      .catch(() => {
+        setIsLoggedIn(false);
+      });
 
     const {
       data: { subscription },
@@ -59,7 +64,7 @@ export function Navbar() {
         {/* Left: Logo & Wordmark */}
         <Link href="/" className="flex items-center gap-3 group">
           <div className="relative w-[28px] h-[28px] flex items-center justify-center overflow-hidden transition-opacity group-hover:opacity-80">
-            <Image src="/logo.svg" alt="Openned Logo" fill className="object-contain" />
+            <Image src="/logo.svg" alt="Openned Logo" fill priority className="object-contain" />
           </div>
           <span className="font-sans font-medium text-[20px] tracking-tight text-[#f5f5f5]">
             Openned
