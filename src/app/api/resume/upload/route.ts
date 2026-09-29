@@ -8,6 +8,9 @@ import {
 import { parseResumeStrict } from "@/lib/resume/parser-engine";
 import { stageAndSyncResumeProfile } from "@/lib/resume/profile-sync";
 
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();

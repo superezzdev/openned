@@ -119,13 +119,18 @@ export function ResumeList({ initialResumes = [], userEmail }: ResumeListProps) 
         body: formData,
       });
 
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "Failed to upload resume");
+      let result: any = null;
+      try {
+        result = await response.json();
+      } catch {
+        // Non-JSON response (e.g., serverless timeout or proxy error)
       }
 
-      if (result.resume) {
+      if (!response.ok || result?.error) {
+        throw new Error(result?.error || `Server returned error (${response.status}). Please try again.`);
+      }
+
+      if (result?.resume) {
         setResumes([result.resume, ...resumes]);
       }
 

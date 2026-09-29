@@ -122,10 +122,15 @@ export function OnboardingDialog({
       clearTimeout(step3Timer);
       clearTimeout(step4Timer);
 
-      const data = await response.json();
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        // Non-JSON response (e.g., serverless timeout or proxy error)
+      }
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Failed to process resume");
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || `Server returned error (${response.status}). Please try again.`);
       }
 
       setActiveStep(4);
