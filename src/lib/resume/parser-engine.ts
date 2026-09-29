@@ -674,6 +674,19 @@ export function isTransientError(error: any): boolean {
   return false;
 }
 
+export function isInvalidKeyError(error: any): boolean {
+  if (!error) return false;
+  const msg = String(error.message || "").toLowerCase();
+  const status = error.status || error.statusCode || error.code;
+  return (
+    msg.includes("api key not valid") ||
+    msg.includes("api_key_invalid") ||
+    msg.includes("invalid api key") ||
+    status === 401 ||
+    status === 403
+  );
+}
+
 async function callGeminiModelWithRetry(
   ai: GoogleGenAI,
   model: string,
@@ -850,6 +863,10 @@ export async function parseResumeStrict(
           }
         } catch (visionErr: any) {
           console.warn(`[ResumeParser] Gemini Vision model ${model} failed: ${visionErr.message}`);
+          if (isInvalidKeyError(visionErr)) {
+            console.warn("[ResumeParser] Gemini API key is invalid or unauthorized. Skipping remaining Gemini vision models.");
+            break;
+          }
         }
       }
     } catch (err: any) {
@@ -892,6 +909,10 @@ export async function parseResumeStrict(
           }
         } catch (modelErr: any) {
           console.warn(`[ResumeParser] Gemini model ${model} failed: ${modelErr.message}`);
+          if (isInvalidKeyError(modelErr)) {
+            console.warn("[ResumeParser] Gemini API key is invalid or unauthorized. Skipping remaining Gemini models.");
+            break;
+          }
         }
       }
     } catch (err: any) {
@@ -931,6 +952,10 @@ export async function parseResumeStrict(
         }
       } catch (groqErr: any) {
         console.warn(`[ResumeParser] Groq model ${model} failed: ${groqErr.message}`);
+        if (isInvalidKeyError(groqErr)) {
+          console.warn("[ResumeParser] Groq API key is invalid or unauthorized. Skipping remaining Groq models.");
+          break;
+        }
       }
     }
   } else {
